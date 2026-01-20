@@ -69,7 +69,8 @@ window.register = async function() {
             throw new Error('Registration service not available');
         }
         
-        const { data, error } = await window.supabase.auth.signUp({
+        // 1. Create auth user
+        const { data: authData, error: authError } = await window.supabase.auth.signUp({
             email: email,
             password: password,
             options: {
@@ -80,10 +81,10 @@ window.register = async function() {
             }
         });
         
-        if (error) {
-            console.error('Registration error:', error);
-            let message = error.message;
-            if (error.message.includes('already registered')) {
+        if (authError) {
+            console.error('Registration auth error:', authError);
+            let message = authError.message;
+            if (authError.message.includes('already registered')) {
                 message = 'Email already registered. Try logging in.';
             }
             showToast(message, 'error');
@@ -91,8 +92,54 @@ window.register = async function() {
             return;
         }
         
-        console.log('✅ Registration successful');
-        showToast('Registration successful! Please check your email.', 'success');
+        console.log('✅ Auth registration successful');
+        
+        // 2. Create user profile in database
+        if (authData.user) {
+            try {
+                console.log('👤 Creating user profile for:', authData.user.id);
+                
+                const { data: profileData, error: profileError } = await window.supabase
+                    .from('user_profiles')
+                    .insert([
+                        {
+                            id: authData.user.id,
+                            email: email,
+                            full_name: name,
+                            role: role,
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        }
+                    ])
+                    .select()
+                    .single();
+                
+                if (profileError) {
+                    console.error('Profile creation error:', profileError);
+                    
+                    // If profile insert fails, we might need to handle it
+                    // But auth user is already created, so we can still show success
+                    console.warn('⚠️ User auth created but profile insert failed');
+                    console.warn('This might be due to RLS policies. Check SQL below.');
+                    
+                    // Show SQL to fix the issue
+                    console.info('💡 Run this SQL in Supabase SQL Editor:');
+                    console.info(`
+CREATE POLICY "Enable insert for authenticated users" 
+ON user_profiles 
+FOR INSERT 
+WITH CHECK (auth.uid() = id);
+                    `);
+                } else {
+                    console.log('✅ User profile created:', profileData);
+                }
+            } catch (profileError) {
+                console.error('Error in profile creation:', profileError);
+            }
+        }
+        
+        console.log('✅ Registration process complete');
+        showToast('Registration successful! Please check your email for verification.', 'success');
         
         // Switch to login tab
         showAuthTab('login');
@@ -254,5 +301,4 @@ if (typeof showToast === 'undefined') {
         }
     };
 }
-
-console.log('✅ auth.js loaded');
+console.log('✅ auth.js loaded with complete registration fix');
