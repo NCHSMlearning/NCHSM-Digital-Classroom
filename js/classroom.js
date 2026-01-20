@@ -33,88 +33,61 @@ function initClassroom() {
         }
     });
     
-    // Setup event listeners (ONCE only)
+    // Setup event listeners
     setupClassroomListeners();
     
     // Cleanup on page unload
     window.addEventListener('beforeunload', cleanupClassroom);
 }
 
-// Setup classroom event listeners - FIXED VERSION
+// Setup classroom event listeners
 function setupClassroomListeners() {
     console.log('🏫 Setting up classroom listeners');
     
-    // Track if we've already set up listeners
-    if (window._classroomListenersSetup) {
-        console.log('🏫 Listeners already set up, skipping');
-        return;
-    }
-    
-    // Flag to prevent duplicate setup
-    window._classroomListenersSetup = true;
-    
-    // Remove any inline onclick handlers from buttons
-    const createClassBtns = document.querySelectorAll('[onclick*="createClassModal"], [onclick*="saveClass"]');
-    createClassBtns.forEach(btn => {
-        btn.removeAttribute('onclick');
+    // Use event delegation for ALL classroom-related clicks
+    document.addEventListener('click', function(e) {
+        // CREATE CLASS BUTTONS
+        if (e.target.closest('#create-class-btn') || 
+            e.target.closest('.teacher-only[onclick*="createClassModal"]')) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('📝 Create Class button clicked');
+            createClassModal();
+            return;
+        }
+        
+        // SAVE CLASS BUTTON in modal
+        if (e.target.closest('#create-class-modal .btn-primary')) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('💾 Save Class button clicked');
+            saveClass();
+            return;
+        }
+        
+        // MODAL CLOSE BUTTONS
+        if (e.target.closest('.modal-close') || 
+            e.target.closest('#create-class-modal .btn-secondary')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const modal = e.target.closest('.modal');
+            if (modal) {
+                closeModal(modal.id);
+            }
+            return;
+        }
+        
+        // JOIN CLASS BUTTON
+        if (e.target.closest('#join-class-btn')) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎯 Join Class button clicked');
+            joinClass();
+            return;
+        }
     });
     
-    // Use event delegation for ALL clicks
-    document.addEventListener('click', handleClassroomClicks, true);
-    
     console.log('✅ Classroom listeners setup complete');
-}
-
-// Global click handler for classroom
-function handleClassroomClicks(e) {
-    const target = e.target;
-    
-    // 1. CREATE CLASS BUTTONS (in dashboard or classroom)
-    if (target.closest('#create-class-btn') || 
-        target.closest('[id*="create-class"][class*="btn"]') ||
-        target.closest('.teacher-only [onclick*="createClass"]')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        
-        console.log('📝 Create Class button clicked');
-        createClassModal();
-        return;
-    }
-    
-    // 2. SAVE CLASS BUTTON in modal
-    if (target.closest('#create-class-modal .btn-primary')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        
-        console.log('💾 Save Class button clicked');
-        saveClass();
-        return;
-    }
-    
-    // 3. MODAL CLOSE BUTTONS
-    if (target.closest('.modal-close') || 
-        target.closest('[onclick*="closeModal"]') ||
-        target.closest('#create-class-modal .btn-secondary')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        
-        const modal = target.closest('.modal');
-        if (modal) {
-            modal.classList.add('hidden');
-            console.log('❌ Modal closed:', modal.id);
-        }
-        return;
-    }
-    
-    // 4. JOIN CLASS BUTTON
-    if (target.closest('#join-class-btn')) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        
-        console.log('🎯 Join Class button clicked');
-        joinClass();
-        return;
-    }
 }
 
 // =====================
@@ -190,13 +163,25 @@ window.createClassModal = function() {
     
     const modal = document.getElementById('create-class-modal');
     if (modal) {
+        // Force modal to be visible
         modal.classList.remove('hidden');
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background-color: rgba(0, 0, 0, 0.5) !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            z-index: 10000 !important;
+        `;
         
         // Set default schedule (next hour)
         const nextHour = new Date();
         nextHour.setHours(nextHour.getHours() + 1);
         nextHour.setMinutes(0);
-        nextHour.setSeconds(0);
         
         const scheduleInput = document.getElementById('class-schedule');
         if (scheduleInput) {
@@ -204,10 +189,9 @@ window.createClassModal = function() {
         }
         
         // Focus on class name input
-        const classNameInput = document.getElementById('class-name');
-        if (classNameInput) {
-            classNameInput.focus();
-        }
+        setTimeout(() => {
+            document.getElementById('class-name')?.focus();
+        }, 100);
         
         console.log('✅ Create class modal opened');
     } else {
@@ -229,11 +213,13 @@ window.saveClass = async function() {
     // Validation
     if (!className) {
         showToast('Class name is required', 'error');
+        document.getElementById('class-name')?.focus();
         return;
     }
     
     if (!schedule) {
         showToast('Schedule is required', 'error');
+        document.getElementById('class-schedule')?.focus();
         return;
     }
     
@@ -248,12 +234,21 @@ window.saveClass = async function() {
     try {
         console.log('📊 Creating class in database...');
         
+        // Get teacher ID
+        const teacherId = AppState.currentUser?.id || 
+                         AppState.currentUser?.user?.id || 
+                         AppState.currentUser?.user_id;
+        
+        if (!teacherId) {
+            throw new Error('Cannot determine teacher ID');
+        }
+        
         const { data, error } = await window.supabase
             .from('courses')
             .insert([{
                 name: className,
                 description: description || null,
-                teacher_id: AppState.currentUser?.id || AppState.currentUser?.user?.id,
+                teacher_id: teacherId,
                 schedule: schedule,
                 duration_minutes: parseInt(duration) || 60,
                 is_active: true,
@@ -265,27 +260,45 @@ window.saveClass = async function() {
         
         if (error) {
             console.error('❌ Database error:', error);
+            
+            // Handle specific errors
+            if (error.code === '23505') {
+                showToast('A class with similar details already exists', 'error');
+            } else if (error.code === '42501') {
+                showToast('Permission denied. Check database permissions.', 'error');
+            } else {
+                showToast('Error creating class: ' + error.message, 'error');
+            }
             throw error;
         }
         
         console.log('✅ Class created:', data);
         showToast('Class created successfully!', 'success');
+        
+        // Close modal
         closeModal('create-class-modal');
         
         // Clear form
         document.getElementById('class-name').value = '';
         document.getElementById('class-description').value = '';
-        document.getElementById('class-schedule').value = '';
         document.getElementById('class-duration').value = '60';
         
         // Load updated classes
         await loadAvailableClasses();
         
+        // If in dashboard section, trigger refresh
+        if (AppState.currentSection === 'dashboard') {
+            window.showSection('dashboard');
+        }
+        
         return data;
         
     } catch (error) {
         console.error('❌ Error creating class:', error);
-        showToast('Error creating class: ' + error.message, 'error');
+        // Don't show toast again if already shown
+        if (!error.message.includes('already shown')) {
+            showToast('Failed to create class. Please try again.', 'error');
+        }
     }
 }
 
@@ -640,321 +653,41 @@ function showActiveClass() {
     }
 }
 
-// Initialize media (camera & microphone)
-async function initMedia() {
-    try {
-        // Check if browser supports getUserMedia
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.warn('⚠️ Media devices not supported');
-            showToast('Your browser does not support video/audio. Please use Chrome, Firefox, or Edge.', 'warning');
-            return;
-        }
-        
-        // Get user media
-        ClassroomState.localStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                width: { ideal: 640 },
-                height: { ideal: 480 }
-            },
-            audio: true
-        });
-        
-        // Update local video display
-        const localVideoPlaceholder = document.getElementById('local-video-placeholder');
-        if (localVideoPlaceholder) {
-            localVideoPlaceholder.innerHTML = `
-                <video autoplay muted playsinline></video>
-            `;
-            const videoElement = localVideoPlaceholder.querySelector('video');
-            videoElement.srcObject = ClassroomState.localStream;
-        }
-        
-        console.log('✅ Media initialized successfully');
-        
-    } catch (error) {
-        console.error('❌ Error accessing media devices:', error);
-        
-        if (error.name === 'NotAllowedError') {
-            showToast('Camera/microphone access denied. Please allow permissions.', 'error');
-        } else if (error.name === 'NotFoundError') {
-            showToast('No camera/microphone found. Please connect a device.', 'error');
-        } else {
-            showToast('Unable to access camera/microphone. Please check permissions.', 'warning');
-        }
-    }
-}
-
-// Connect to class (simulated)
-function connectToClass() {
-    console.log('🔗 Connecting to class...');
-    
-    // Simulate connection and adding participants
-    setTimeout(() => {
-        addParticipant('teacher-1', 'Dr. Smith', true);
-        addParticipant('student-1', 'Alex Johnson', false);
-        addParticipant('student-2', 'Maria Garcia', false);
-        addParticipant('student-3', 'David Chen', false);
-        
-        // Add welcome message
-        addChatMessage('Dr. Smith', 'Welcome everyone! Let\'s get started.', false);
-    }, 1500);
-}
-
-// Add participant to class
-function addParticipant(id, name, isTeacher) {
-    const participantsList = document.getElementById('participants-list');
-    const videoGrid = document.getElementById('video-grid');
-    
-    if (!participantsList || !videoGrid) return;
-    
-    // Add to participants list
-    const participantItem = document.createElement('div');
-    participantItem.className = `participant-item ${isTeacher ? 'host' : ''}`;
-    participantItem.innerHTML = `
-        <div class="participant-avatar">
-            ${name.charAt(0)}
-        </div>
-        <div class="participant-info">
-            <div class="participant-name">${name}</div>
-            <div class="participant-role">${isTeacher ? 'Teacher' : 'Student'}</div>
-        </div>
-        <div class="participant-status">
-            <i class="fas fa-microphone"></i>
-        </div>
-    `;
-    participantsList.appendChild(participantItem);
-    
-    // Add to video grid (except for self)
-    if (id !== 'self') {
-        const videoTile = document.createElement('div');
-        videoTile.className = 'video-tile remote-video';
-        videoTile.innerHTML = `
-            <div class="video-placeholder">
-                <i class="fas fa-user"></i>
-                <div class="video-status">
-                    <span class="status-indicator active"></span>
-                    Online
-                </div>
-            </div>
-            <div class="video-info">
-                <span class="user-name">${name}</span>
-                <span class="user-role">${isTeacher ? 'Teacher' : 'Student'}</span>
-            </div>
-        `;
-        videoGrid.appendChild(videoTile);
-    }
-    
-    // Update participant count
-    const participantCount = document.getElementById('participant-count');
-    if (participantCount) {
-        participantCount.textContent = document.querySelectorAll('.participant-item').length;
-    }
-    
-    // Store participant
-    ClassroomState.participants.push({ id, name, isTeacher });
-    
-    // Show notification for new participant
-    if (id !== 'self') {
-        showToast(`${name} joined the class`, 'info');
-    }
-}
-
 // =====================
-// MEDIA CONTROLS
+// MEDIA & CHAT FUNCTIONS
 // =====================
 
-// Toggle video
 window.toggleVideo = async function() {
-    if (!ClassroomState.localStream) {
-        console.warn('⚠️ No local stream to toggle video');
-        return;
-    }
+    if (!ClassroomState.localStream) return;
     
     const videoTrack = ClassroomState.localStream.getVideoTracks()[0];
     if (videoTrack) {
         ClassroomState.isVideoEnabled = !videoTrack.enabled;
         videoTrack.enabled = ClassroomState.isVideoEnabled;
-        
-        const videoToggle = document.getElementById('video-toggle');
-        if (videoToggle) {
-            videoToggle.classList.toggle('active', ClassroomState.isVideoEnabled);
-            videoToggle.querySelector('i').className = ClassroomState.isVideoEnabled ? 'fas fa-video' : 'fas fa-video-slash';
-            videoToggle.title = ClassroomState.isVideoEnabled ? 'Turn off camera' : 'Turn on camera';
-        }
-        
-        // Update video placeholder status
-        const localVideoPlaceholder = document.getElementById('local-video-placeholder');
-        if (localVideoPlaceholder) {
-            const statusElement = localVideoPlaceholder.querySelector('.video-status');
-            if (statusElement) {
-                statusElement.innerHTML = `
-                    <span class="status-indicator ${ClassroomState.isVideoEnabled ? 'active' : 'inactive'}"></span>
-                    ${ClassroomState.isVideoEnabled ? 'Camera On' : 'Camera Off'}
-                `;
-            }
-        }
-        
         showToast(ClassroomState.isVideoEnabled ? 'Video enabled' : 'Video disabled', 'info');
     }
 }
 
-// Toggle audio
 window.toggleAudio = async function() {
-    if (!ClassroomState.localStream) {
-        console.warn('⚠️ No local stream to toggle audio');
-        return;
-    }
+    if (!ClassroomState.localStream) return;
     
     const audioTrack = ClassroomState.localStream.getAudioTracks()[0];
     if (audioTrack) {
         ClassroomState.isAudioEnabled = !audioTrack.enabled;
         audioTrack.enabled = ClassroomState.isAudioEnabled;
-        
-        const audioToggle = document.getElementById('audio-toggle');
-        if (audioToggle) {
-            audioToggle.classList.toggle('active', ClassroomState.isAudioEnabled);
-            audioToggle.querySelector('i').className = ClassroomState.isAudioEnabled ? 'fas fa-microphone' : 'fas fa-microphone-slash';
-            audioToggle.title = ClassroomState.isAudioEnabled ? 'Mute microphone' : 'Unmute microphone';
-        }
-        
-        // Update participant status
-        updateParticipantAudioStatus();
-        
-        showToast(ClassroomState.isAudioEnabled ? 'Microphone enabled' : 'Microphone muted', 'info');
+        showToast(ClassroomState.isAudioEnabled ? 'Audio enabled' : 'Audio disabled', 'info');
     }
 }
 
-// Toggle screen sharing
 window.toggleScreenShare = async function() {
-    if (!ClassroomState.isInClass) {
-        showToast('You must be in a class to share screen', 'error');
-        return;
-    }
-    
-    try {
-        if (!ClassroomState.isScreenSharing) {
-            // Start screen sharing
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({
-                video: {
-                    cursor: "always",
-                    displaySurface: "browser"
-                },
-                audio: true
-            });
-            
-            ClassroomState.isScreenSharing = true;
-            
-            const screenShareBtn = document.getElementById('screen-share-btn');
-            if (screenShareBtn) {
-                screenShareBtn.classList.add('active');
-                screenShareBtn.title = 'Stop sharing';
-            }
-            
-            showToast('Screen sharing started', 'success');
-            
-            // Stop sharing when track ends
-            screenStream.getVideoTracks()[0].onended = () => {
-                ClassroomState.isScreenSharing = false;
-                const btn = document.getElementById('screen-share-btn');
-                if (btn) {
-                    btn.classList.remove('active');
-                    btn.title = 'Share screen';
-                }
-                showToast('Screen sharing stopped', 'info');
-            };
-            
-        } else {
-            ClassroomState.isScreenSharing = false;
-            
-            const screenShareBtn = document.getElementById('screen-share-btn');
-            if (screenShareBtn) {
-                screenShareBtn.classList.remove('active');
-                screenShareBtn.title = 'Share screen';
-            }
-            
-            showToast('Screen sharing stopped', 'info');
-        }
-        
-    } catch (error) {
-        console.error('Screen sharing error:', error);
-        if (error.name !== 'NotAllowedError') {
-            showToast('Error sharing screen: ' + error.message, 'error');
-        }
-    }
+    showToast('Screen sharing feature would start here', 'info');
 }
 
-// Raise hand
 window.raiseHand = function() {
     ClassroomState.handRaised = !ClassroomState.handRaised;
-    
-    const handRaiseBtn = document.getElementById('hand-raise-btn');
-    if (handRaiseBtn) {
-        handRaiseBtn.classList.toggle('active', ClassroomState.handRaised);
-        handRaiseBtn.title = ClassroomState.handRaised ? 'Lower hand' : 'Raise hand';
-    }
-    
-    // Update participant status
-    updateParticipantHandStatus();
-    
-    if (ClassroomState.handRaised) {
-        showToast('✋ Hand raised! Teacher will acknowledge you shortly.', 'success');
-        
-        // Simulate teacher acknowledgment
-        setTimeout(() => {
-            if (ClassroomState.handRaised) {
-                addChatMessage('Dr. Smith', 'Yes, go ahead!', false);
-                ClassroomState.handRaised = false;
-                if (handRaiseBtn) {
-                    handRaiseBtn.classList.remove('active');
-                    handRaiseBtn.title = 'Raise hand';
-                }
-                updateParticipantHandStatus();
-            }
-        }, 3000);
-        
-    } else {
-        showToast('Hand lowered', 'info');
-    }
+    showToast(ClassroomState.handRaised ? 'Hand raised!' : 'Hand lowered', 'info');
 }
 
-// Update participant audio status
-function updateParticipantAudioStatus() {
-    const participantItems = document.querySelectorAll('.participant-item');
-    if (participantItems.length > 0) {
-        const firstParticipant = participantItems[0];
-        const statusIcon = firstParticipant.querySelector('.participant-status i.fa-microphone');
-        if (statusIcon) {
-            statusIcon.className = ClassroomState.isAudioEnabled ? 'fas fa-microphone' : 'fas fa-microphone-slash muted';
-        }
-    }
-}
-
-// Update participant hand status
-function updateParticipantHandStatus() {
-    const participantItems = document.querySelectorAll('.participant-item');
-    if (participantItems.length > 0) {
-        const firstParticipant = participantItems[0];
-        let handIcon = firstParticipant.querySelector('.participant-status i.fa-hand-paper');
-        
-        if (ClassroomState.handRaised) {
-            if (!handIcon) {
-                handIcon = document.createElement('i');
-                handIcon.className = 'fas fa-hand-paper hand-raised';
-                firstParticipant.querySelector('.participant-status').appendChild(handIcon);
-            }
-        } else {
-            if (handIcon) {
-                handIcon.remove();
-            }
-        }
-    }
-}
-
-// =====================
-// CHAT FUNCTIONALITY
-// =====================
-
-// Send chat message
 window.sendChatMessage = function() {
     const chatInput = document.getElementById('chat-input');
     const message = chatInput?.value.trim();
@@ -981,109 +714,106 @@ window.sendChatMessage = function() {
     simulateChatResponse();
 }
 
-// Add chat message
 function addChatMessage(sender, message, isSent) {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
     
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isSent ? 'sent' : 'received'}`;
-    
-    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
     messageDiv.innerHTML = `
         <div class="message-header">
             <span class="message-sender">${sender}${isSent ? ' (You)' : ''}</span>
-            <span class="message-time">${timeString}</span>
+            <span class="message-time">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
         <div class="message-content">${message}</div>
     `;
     
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Store message
-    ClassroomState.messages.push({
-        sender,
-        message,
-        time: new Date(),
-        isSent
-    });
-    
-    // Play notification sound for received messages
-    if (!isSent) {
-        playNotificationSound();
-    }
 }
 
-// Play notification sound
-function playNotificationSound() {
-    // Create a simple notification sound
-    try {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        oscillator.frequency.value = 800;
-        oscillator.type = 'sine';
-        
-        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-        
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.1);
-    } catch (e) {
-        console.log('Audio context not supported');
-    }
-}
-
-// Simulate chat response
 function simulateChatResponse() {
     const responses = [
-        { sender: 'Dr. Smith', message: 'Great question! Let me explain...' },
-        { sender: 'Dr. Smith', message: 'Can you elaborate on that?' },
-        { sender: 'Dr. Smith', message: 'I agree with your point.' },
-        { sender: 'Dr. Smith', message: 'Thanks for sharing that insight!' },
-        { sender: 'Alex Johnson', message: 'I was wondering about that too.' },
-        { sender: 'Maria Garcia', message: 'That was very helpful, thank you!' },
-        { sender: 'David Chen', message: 'Could you repeat that last part?' }
+        { sender: 'Teacher', message: 'Great question!' },
+        { sender: 'Student', message: 'I agree!' }
     ];
-    
-    // Random delay between 2-5 seconds
-    const delay = 2000 + Math.random() * 3000;
     
     setTimeout(() => {
         const randomResponse = responses[Math.floor(Math.random() * responses.length)];
         addChatMessage(randomResponse.sender, randomResponse.message, false);
-    }, delay);
+    }, 2000);
 }
 
 // =====================
-// CLASSROOM CONTROLS
+// UTILITY FUNCTIONS
 // =====================
+
+// Initialize media
+async function initMedia() {
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.warn('⚠️ Media devices not supported');
+            return;
+        }
+        
+        ClassroomState.localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
+        
+        console.log('✅ Media initialized successfully');
+        
+    } catch (error) {
+        console.error('❌ Error accessing media devices:', error);
+        showToast('Unable to access camera/microphone', 'warning');
+    }
+}
+
+// Connect to class (simulated)
+function connectToClass() {
+    console.log('🔗 Connecting to class...');
+    
+    // Simulate adding participants
+    setTimeout(() => {
+        addParticipant('teacher-1', 'Teacher', true);
+        addParticipant('student-1', 'Alex Johnson', false);
+    }, 1500);
+}
+
+function addParticipant(id, name, isTeacher) {
+    const participantsList = document.getElementById('participants-list');
+    if (!participantsList) return;
+    
+    const participantItem = document.createElement('div');
+    participantItem.className = `participant-item ${isTeacher ? 'host' : ''}`;
+    participantItem.innerHTML = `
+        <div class="participant-avatar">${name.charAt(0)}</div>
+        <div class="participant-info">
+            <div class="participant-name">${name}</div>
+            <div class="participant-role">${isTeacher ? 'Teacher' : 'Student'}</div>
+        </div>
+        <div class="participant-status">
+            <i class="fas fa-microphone"></i>
+        </div>
+    `;
+    participantsList.appendChild(participantItem);
+    
+    // Update participant count
+    const participantCount = document.getElementById('participant-count');
+    if (participantCount) {
+        participantCount.textContent = document.querySelectorAll('.participant-item').length;
+    }
+}
 
 // Leave class
 window.leaveClass = async function() {
-    if (!ClassroomState.isInClass) {
-        showToast('Not in a class', 'info');
-        return;
-    }
+    if (!ClassroomState.isInClass) return;
     
     console.log('👋 Leaving class');
     
-    // Show confirmation
-    if (!confirm('Are you sure you want to leave the class?')) {
-        return;
-    }
-    
     // Stop media streams
     if (ClassroomState.localStream) {
-        ClassroomState.localStream.getTracks().forEach(track => {
-            track.stop();
-        });
+        ClassroomState.localStream.getTracks().forEach(track => track.stop());
         ClassroomState.localStream = null;
     }
     
@@ -1099,8 +829,6 @@ window.leaveClass = async function() {
     
     // Update UI
     updateClassroomUI();
-    
-    // Reload classroom section
     await loadClassroomSection();
     
     showToast('Left the class', 'info');
@@ -1108,9 +836,7 @@ window.leaveClass = async function() {
 
 // View class details
 window.viewClassDetails = function(classId) {
-    showToast('Opening class details...', 'info');
-    // In a full implementation, this would open a modal with detailed info
-    console.log('Viewing details for class:', classId);
+    showToast('Class details would show here', 'info');
 }
 
 // Show class resources
@@ -1119,18 +845,7 @@ window.showClassResources = function() {
         showToast('Not in a class', 'error');
         return;
     }
-    
-    showToast('Opening class resources...', 'info');
-    // In a full implementation, this would show resources for the current class
-    console.log('Showing resources for class:', ClassroomState.currentClass.name);
-}
-
-// Cleanup classroom on page unload
-function cleanupClassroom() {
-    if (ClassroomState.isInClass) {
-        console.log('🧹 Cleaning up classroom before unload');
-        leaveClass();
-    }
+    showToast('Class resources would show here', 'info');
 }
 
 // Close modal
@@ -1138,13 +853,10 @@ window.closeModal = function(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) {
         modal.classList.add('hidden');
+        modal.style.cssText = '';
         console.log('✅ Modal closed:', modalId);
     }
 }
-
-// =====================
-// UTILITY FUNCTIONS
-// =====================
 
 // Format date time
 function formatDateTime(dateString) {
@@ -1158,19 +870,22 @@ function formatDateTime(dateString) {
         return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     } else if (diffDays === 1) {
         return `Tomorrow, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-    } else if (diffDays < 7) {
-        return date.toLocaleDateString('en-US', { 
-            weekday: 'long',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
     } else {
         return date.toLocaleDateString('en-US', { 
+            weekday: 'short',
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
         });
+    }
+}
+
+// Cleanup classroom on page unload
+function cleanupClassroom() {
+    if (ClassroomState.isInClass) {
+        console.log('🧹 Cleaning up classroom before unload');
+        leaveClass();
     }
 }
 
