@@ -160,40 +160,50 @@ function setupAuthListeners() {
     
     console.log('🔔 Setting up auth state listeners');
     
+    // Clear any existing listeners first
+    window.supabase.auth.removeAllListeners();
+    
     // Listen for auth state changes
-    window.supabase.auth.onAuthStateChange((event, session) => {
+    window.supabase.auth.onAuthStateChange(async (event, session) => {
         console.log('🔐 Auth State Change:', event);
         
-        switch(event) {
-            case 'SIGNED_IN':
-                console.log('✅ User signed in');
-                if (session?.user) {
-                    handleAuthenticatedUser(session.user);
-                }
-                break;
-                
-            case 'SIGNED_OUT':
-                console.log('👋 User signed out');
-                handleUserSignedOut();
-                break;
-                
-            case 'USER_UPDATED':
-                console.log('👤 User updated');
-                if (session?.user) {
-                    AppState.currentUser = session.user;
-                    updateUserInfo();
-                }
-                break;
-                
-            case 'INITIAL_SESSION':
-                console.log('📋 Initial session');
-                if (session?.user) {
-                    handleAuthenticatedUser(session.user);
-                } else {
-                    showLoginScreen();
-                }
-                break;
+        // Add debounce for rapid events
+        if (this._authDebounce) {
+            clearTimeout(this._authDebounce);
         }
+        
+        this._authDebounce = setTimeout(async () => {
+            switch(event) {
+                case 'SIGNED_IN':
+                    console.log('✅ User signed in');
+                    if (session?.user) {
+                        await handleAuthenticatedUser(session.user);
+                    }
+                    break;
+                    
+                case 'SIGNED_OUT':
+                    console.log('👋 User signed out');
+                    handleUserSignedOut();
+                    break;
+                    
+                case 'USER_UPDATED':
+                    console.log('👤 User updated');
+                    if (session?.user) {
+                        AppState.currentUser = session.user;
+                        updateUserInfo();
+                    }
+                    break;
+                    
+                case 'INITIAL_SESSION':
+                    console.log('📋 Initial session');
+                    if (session?.user) {
+                        await handleAuthenticatedUser(session.user);
+                    } else {
+                        showLoginScreen();
+                    }
+                    break;
+            }
+        }, 100);
     });
 }
 
