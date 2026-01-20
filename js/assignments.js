@@ -32,85 +32,39 @@ function initAssignments() {
     
     // Setup event listeners
     setupAssignmentsListeners();
-    
-    // Ensure create button exists
-    ensureCreateButton();
-}
-
-// Ensure create assignment button exists
-function ensureCreateButton() {
-    // Wait for DOM to be ready
-    setTimeout(() => {
-        let createBtn = document.getElementById('create-assignment-btn');
-        
-        if (!createBtn) {
-            console.log('Creating assignment button...');
-            
-            // Try to find where to add the button
-            const assignmentSection = document.getElementById('assignments-section');
-            const assignmentHeader = document.querySelector('#assignments-section .section-header') || 
-                                   document.querySelector('#assignments-section h3') ||
-                                   assignmentSection;
-            
-            if (assignmentHeader) {
-                createBtn = document.createElement('button');
-                createBtn.id = 'create-assignment-btn';
-                createBtn.className = 'btn btn-primary teacher-only';
-                createBtn.innerHTML = '<i class="fas fa-plus"></i> Create Assignment';
-                createBtn.style.margin = '10px';
-                
-                createBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    createAssignment();
-                });
-                
-                // Add to the end of the header or section
-                if (assignmentHeader.tagName === 'H3') {
-                    assignmentHeader.parentElement.appendChild(createBtn);
-                } else {
-                    assignmentHeader.appendChild(createBtn);
-                }
-                
-                console.log('✅ Create Assignment button added!');
-            }
-        }
-        
-        return createBtn;
-    }, 500); // Wait for page to load
 }
 
 // Setup assignments event listeners
 function setupAssignmentsListeners() {
-    // Use setTimeout to ensure DOM is loaded
-    setTimeout(() => {
-        console.log('Setting up assignment listeners...');
-        
-        // Setup filter buttons
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const filter = this.dataset.filter || 'all';
-                filterAssignments(filter);
-            });
-        });
-        
-        // Setup create assignment button (if exists)
-        const createBtn = document.getElementById('create-assignment-btn');
-        if (createBtn) {
-            // Remove any existing listeners and add fresh one
-            createBtn.replaceWith(createBtn.cloneNode(true));
-            document.getElementById('create-assignment-btn').addEventListener('click', function(e) {
-                e.preventDefault();
-                console.log('Create assignment button clicked!');
-                createAssignment();
-            });
+    console.log('Setting up assignment listeners...');
+    
+    // Use event delegation for filter buttons (since they might be added dynamically)
+    document.addEventListener('click', function(event) {
+        // Check if clicked element is a filter button or inside one
+        const filterBtn = event.target.closest('.filter-btn');
+        if (filterBtn) {
+            const filter = filterBtn.dataset.filter || filterBtn.textContent.toLowerCase();
+            filterAssignments(filter);
         }
-        
-        // Setup export grades button
-        const exportBtn = document.getElementById('export-grades-btn');
+    });
+    
+    // Setup create assignment button using event delegation
+    document.addEventListener('click', function(event) {
+        const createBtn = event.target.closest('[onclick*="createAssignment"], #create-assignment-btn');
+        if (createBtn && AppState.userRole === 'teacher') {
+            event.preventDefault();
+            createAssignment();
+        }
+    });
+    
+    // Setup export grades button
+    document.addEventListener('click', function(event) {
+        const exportBtn = event.target.closest('[onclick*="exportGrades"], #export-grades-btn');
         if (exportBtn) {
-            exportBtn.addEventListener('click', exportGrades);
+            event.preventDefault();
+            exportGrades();
         }
-    }, 300);
+    });
 }
 
 // =====================
@@ -237,7 +191,7 @@ function renderTeacherAssignments(filter = 'all') {
     
     // Update filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        if (btn.dataset.filter === filter) {
+        if (btn.dataset.filter === filter || btn.textContent.toLowerCase().includes(filter)) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
@@ -360,7 +314,7 @@ function renderStudentAssignments(filter = 'all') {
     
     // Update filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        if (btn.dataset.filter === filter) {
+        if (btn.dataset.filter === filter || btn.textContent.toLowerCase().includes(filter)) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
@@ -515,7 +469,7 @@ function filterAssignments(filter) {
 // ASSIGNMENT MANAGEMENT
 // =====================
 
-// Create new assignment
+// Create new assignment - USING HTML MODAL
 async function createAssignment() {
     console.log('createAssignment function called');
     
@@ -535,76 +489,44 @@ async function createAssignment() {
         
         if (error) throw error;
         
-        // Create modal for assignment creation
-        const modalContent = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Create New Assignment</h3>
-                    <button class="modal-close" onclick="closeModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label>Title *</label>
-                        <input type="text" id="assignment-title" class="form-control" 
-                               placeholder="Enter assignment title" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea id="assignment-description" class="form-control" 
-                                  rows="3" placeholder="Describe the assignment..."></textarea>
-                    </div>
-                    <div class="row">
-                        <div class="col-6">
-                            <div class="form-group">
-                                <label>Due Date *</label>
-                                <input type="datetime-local" id="assignment-due-date" 
-                                       class="form-control" required>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="form-group">
-                                <label>Max Points *</label>
-                                <input type="number" id="assignment-points" class="form-control" 
-                                       value="100" min="1" max="1000" required>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Class (Optional)</label>
-                        <select id="assignment-class" class="form-control">
-                            <option value="">No specific class (General Assignment)</option>
-                            ${classes && classes.length > 0 ? classes.map(cls => `
-                                <option value="${cls.id}">${cls.name}</option>
-                            `).join('') : ''}
-                        </select>
-                        ${(!classes || classes.length === 0) ? `
-                            <div class="form-hint">
-                                <i class="fas fa-info-circle"></i>
-                                No classes created yet. This will be a general assignment.
-                            </div>
-                        ` : ''}
-                    </div>
-                    <div class="form-group">
-                        <label>Assignment Type (Optional)</label>
-                        <select id="assignment-type" class="form-control">
-                            <option value="">Select type</option>
-                            <option value="homework">Homework</option>
-                            <option value="quiz">Quiz</option>
-                            <option value="test">Test</option>
-                            <option value="project">Project</option>
-                            <option value="essay">Essay</option>
-                            <option value="presentation">Presentation</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveNewAssignment()">Create Assignment</button>
-                </div>
-            </div>
-        `;
+        // Check if we need to add class dropdown to modal
+        const modalBody = document.querySelector('#create-assignment-modal .modal-body');
+        const existingClassSelect = document.getElementById('assignment-class-select');
         
-        showModal(modalContent);
+        // Add class dropdown if it doesn't exist
+        if (modalBody && !existingClassSelect) {
+            const classSelectHtml = `
+                <div class="form-group">
+                    <label>Class (Optional)</label>
+                    <select id="assignment-class-select" class="form-control">
+                        <option value="">No specific class (General Assignment)</option>
+                        ${classes && classes.length > 0 ? classes.map(cls => `
+                            <option value="${cls.id}">${cls.name}</option>
+                        `).join('') : ''}
+                    </select>
+                    ${(!classes || classes.length === 0) ? `
+                        <div class="form-hint">
+                            <i class="fas fa-info-circle"></i>
+                            No classes created yet. This will be a general assignment.
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            // Insert after points field
+            const pointsField = modalBody.querySelector('input[id*="points"]');
+            if (pointsField) {
+                pointsField.insertAdjacentHTML('afterend', classSelectHtml);
+            }
+        } else if (existingClassSelect) {
+            // Update existing dropdown
+            existingClassSelect.innerHTML = `
+                <option value="">No specific class (General Assignment)</option>
+                ${classes && classes.length > 0 ? classes.map(cls => `
+                    <option value="${cls.id}">${cls.name}</option>
+                `).join('') : ''}
+            `;
+        }
         
         // Set default due date (tomorrow at 11:59 PM)
         const tomorrow = new Date();
@@ -616,20 +538,32 @@ async function createAssignment() {
             dueDateInput.value = tomorrow.toISOString().slice(0, 16);
         }
         
+        // Show the modal
+        const modal = document.getElementById('create-assignment-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            console.log('Assignment modal shown!');
+        } else {
+            console.error('Assignment modal not found!');
+            showToast('Error opening assignment form', 'error');
+        }
+        
     } catch (error) {
         console.error('Error loading classes for assignment:', error);
         showToast('Error loading assignment form', 'error');
     }
 }
 
-// Save new assignment
-async function saveNewAssignment() {
+// Save new assignment - FOR HTML MODAL
+async function saveAssignment() {
+    console.log('saveAssignment called');
+    
     const title = document.getElementById('assignment-title')?.value;
     const description = document.getElementById('assignment-description')?.value;
     const dueDate = document.getElementById('assignment-due-date')?.value;
     const points = document.getElementById('assignment-points')?.value;
-    const classId = document.getElementById('assignment-class')?.value;
-    const assignmentType = document.getElementById('assignment-type')?.value;
+    const classSelect = document.getElementById('assignment-class-select');
+    const classId = classSelect ? classSelect.value : null;
     
     // Validation
     if (!title || !dueDate || !points) {
@@ -652,11 +586,6 @@ async function saveNewAssignment() {
             assignmentData.course_id = classId;
         }
         
-        // Add assignment type if selected
-        if (assignmentType) {
-            assignmentData.assignment_type = assignmentType;
-        }
-        
         const { data, error } = await window.supabase
             .from('assignments')
             .insert([assignmentData])
@@ -666,7 +595,16 @@ async function saveNewAssignment() {
         if (error) throw error;
         
         showToast('Assignment created successfully!', 'success');
-        closeModal();
+        
+        // Close the modal
+        const modal = document.getElementById('create-assignment-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        
+        // Clear form
+        document.getElementById('assignment-title').value = '';
+        document.getElementById('assignment-description').value = '';
         
         // Reload assignments
         await loadAssignmentsSection();
@@ -749,12 +687,12 @@ async function gradeAssignment(assignmentId) {
             return;
         }
         
-        // Create grading modal
+        // Create grading modal dynamically
         const modalContent = `
             <div class="modal-content wide-modal">
                 <div class="modal-header">
                     <h3>Grade Submissions: ${assignment.title}</h3>
-                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                    <button class="modal-close" onclick="closeGradingModal()">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="grading-header">
@@ -802,12 +740,42 @@ async function gradeAssignment(assignmentId) {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+                    <button class="btn btn-secondary" onclick="closeGradingModal()">Close</button>
                 </div>
             </div>
         `;
         
-        showModal(modalContent);
+        // Create modal container if it doesn't exist
+        let modalContainer = document.getElementById('grading-modal-container');
+        if (!modalContainer) {
+            modalContainer = document.createElement('div');
+            modalContainer.id = 'grading-modal-container';
+            modalContainer.className = 'modal-container';
+            modalContainer.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            document.body.appendChild(modalContainer);
+        }
+        
+        modalContainer.innerHTML = `
+            <div class="modal" style="background: white; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+                ${modalContent}
+            </div>
+        `;
+        
+        // Add close function
+        window.closeGradingModal = function() {
+            modalContainer.remove();
+        };
         
     } catch (error) {
         console.error('Error loading submissions for grading:', error);
@@ -1261,11 +1229,12 @@ async function viewFeedbackModal(submissionId) {
         
         if (error) throw error;
         
+        // Create simple modal for feedback
         const modalContent = `
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Feedback: ${submission.assignment?.title}</h3>
-                    <button class="modal-close" onclick="closeModal()">&times;</button>
+                    <button class="modal-close" onclick="closeFeedbackModal()">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="feedback-display">
@@ -1284,86 +1253,47 @@ async function viewFeedbackModal(submissionId) {
                         ` : '<p>No feedback provided.</p>'}
                     </div>
                 </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeFeedbackModal()">Close</button>
+                </div>
             </div>
         `;
         
-        showModal(modalContent);
+        // Create modal container
+        let modalContainer = document.getElementById('feedback-modal-container');
+        if (!modalContainer) {
+            modalContainer = document.createElement('div');
+            modalContainer.id = 'feedback-modal-container';
+            modalContainer.className = 'modal-container';
+            modalContainer.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+            `;
+            document.body.appendChild(modalContainer);
+        }
+        
+        modalContainer.innerHTML = `
+            <div class="modal" style="background: white; border-radius: 8px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
+                ${modalContent}
+            </div>
+        `;
+        
+        // Add close function
+        window.closeFeedbackModal = function() {
+            modalContainer.remove();
+        };
         
     } catch (error) {
         console.error('Error loading feedback:', error);
         showToast('Error loading feedback', 'error');
-    }
-}
-
-// Modal helper functions
-function showModal(content) {
-    console.log('showModal called');
-    
-    // Check if modal container exists
-    let modalContainer = document.getElementById('modal-container');
-    if (!modalContainer) {
-        modalContainer = document.createElement('div');
-        modalContainer.id = 'modal-container';
-        modalContainer.className = 'modal-container';
-        modalContainer.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s, visibility 0.3s;
-        `;
-        document.body.appendChild(modalContainer);
-    }
-    
-    // Create modal
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.cssText = `
-        background: white;
-        border-radius: 8px;
-        width: 90%;
-        max-width: 500px;
-        max-height: 90vh;
-        overflow-y: auto;
-        transform: translateY(-20px);
-        transition: transform 0.3s;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    `;
-    modal.innerHTML = content;
-    
-    // Clear and add new modal
-    modalContainer.innerHTML = '';
-    modalContainer.appendChild(modal);
-    
-    // Show with animation
-    setTimeout(() => {
-        modalContainer.style.opacity = '1';
-        modalContainer.style.visibility = 'visible';
-        modal.style.transform = 'translateY(0)';
-        document.body.style.overflow = 'hidden';
-    }, 10);
-    
-    console.log('Modal should be visible now');
-}
-
-function closeModal() {
-    console.log('closeModal called');
-    const modalContainer = document.getElementById('modal-container');
-    if (modalContainer) {
-        modalContainer.style.opacity = '0';
-        modalContainer.style.visibility = 'hidden';
-        setTimeout(() => {
-            modalContainer.innerHTML = '';
-            document.body.style.overflow = '';
-        }, 300);
     }
 }
 
@@ -1399,12 +1329,11 @@ window.initAssignments = initAssignments;
 window.loadAssignmentsSection = loadAssignmentsSection;
 window.loadGradesSection = loadGradesSection;
 window.createAssignment = createAssignment;
+window.saveAssignment = saveAssignment;  // Changed from saveNewAssignment
 window.submitAssignment = submitAssignment;
 window.gradeAssignment = gradeAssignment;
 window.filterAssignments = filterAssignments;
 window.exportGrades = exportGrades;
 window.viewFeedbackModal = viewFeedbackModal;
-window.showModal = showModal;
-window.closeModal = closeModal;
 
 console.log('✅ assignments.js loaded - Assignments module ready');
