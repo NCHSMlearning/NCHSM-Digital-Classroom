@@ -128,7 +128,7 @@ function updateClassroomUI() {
 // =====================
 
 // Open create class modal
-function createClassModal() {
+window.createClass = function() {
     if (AppState.userRole !== 'teacher') {
         showToast('Only teachers can create classes', 'error');
         return;
