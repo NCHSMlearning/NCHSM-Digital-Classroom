@@ -1,102 +1,71 @@
-// Authentication Functions
-console.log('auth.js loading...');
+console.log('🔐 auth.js loading');
 
-// Wait for Supabase to be ready
-let supabaseReady = false;
-
-function waitForSupabase() {
-    return new Promise((resolve) => {
-        const check = () => {
-            if (typeof window.supabase !== 'undefined' && window.supabase.auth) {
-                console.log('Supabase is ready');
-                supabaseReady = true;
-                resolve(window.supabase);
-            } else {
-                console.log('Waiting for Supabase...');
-                setTimeout(check, 100);
-            }
-        };
-        check();
-    });
-}
-
-// Initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('auth.js DOM ready');
+// Direct initialization - no waiting
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 auth.js: DOM ready');
     
-    // Wait for Supabase
-    const supabase = await waitForSupabase();
-    console.log('Supabase ready, setting up auth listener');
-    
-    // Setup auth listener
-    setupAuthListener(supabase);
-    
-    // Check current session
-    await checkCurrentSession(supabase);
-});
-
-// Setup auth state listener
-function setupAuthListener(supabaseClient) {
-    if (!supabaseClient || !supabaseClient.auth) {
-        console.error('Cannot setup auth listener: supabaseClient is invalid');
+    // Check if supabase is available
+    if (!window.supabase || !window.supabase.auth) {
+        console.error('❌ Supabase auth not available on DOM load');
+        // Show login screen anyway
+        showLoginScreen();
         return;
     }
     
-    console.log('Setting up auth state change listener');
+    console.log('✅ Supabase auth available, setting up listener');
     
-    supabaseClient.auth.onAuthStateChange((event, session) => {
-        console.log('Auth state changed:', event);
+    // Setup auth listener
+    window.supabase.auth.onAuthStateChange((event, session) => {
+        console.log('🔄 Auth state changed:', event);
         
-        if (event === 'SIGNED_IN') {
-            console.log('User signed in:', session?.user?.email);
-            showMainApp();
-            loadUserData(session.user);
-        } else if (event === 'SIGNED_OUT') {
-            console.log('User signed out');
-            showLoginScreen();
-        } else if (event === 'INITIAL_SESSION') {
-            console.log('Initial session loaded');
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
             if (session) {
+                console.log('👤 User logged in:', session.user.email);
                 showMainApp();
                 loadUserData(session.user);
             } else {
+                console.log('👤 No session, showing login');
                 showLoginScreen();
             }
+        } else if (event === 'SIGNED_OUT') {
+            console.log('👤 User signed out');
+            showLoginScreen();
         }
     });
-}
+    
+    // Immediately check current session
+    checkCurrentSession();
+});
 
-// Check current session
-async function checkCurrentSession(supabaseClient) {
+async function checkCurrentSession() {
     try {
-        if (!supabaseClient || !supabaseClient.auth) {
-            console.log('Supabase auth not available');
+        if (!window.supabase?.auth) {
+            console.log('⚠️ No supabase auth, showing login');
             showLoginScreen();
             return;
         }
         
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        const { data: { session }, error } = await window.supabase.auth.getSession();
         
         if (error) {
-            console.error('Session check error:', error);
+            console.error('Session error:', error);
             showLoginScreen();
             return;
         }
         
         if (session) {
-            console.log('Found existing session for:', session.user.email);
+            console.log('✅ Found session:', session.user.email);
             showMainApp();
             loadUserData(session.user);
         } else {
-            console.log('No existing session');
+            console.log('ℹ️ No session found');
             showLoginScreen();
         }
     } catch (error) {
-        console.error('Error checking session:', error);
+        console.error('❌ Session check error:', error);
         showLoginScreen();
     }
 }
-
 // Login function
 async function login() {
     const email = document.getElementById('login-email')?.value;
