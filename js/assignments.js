@@ -1,15 +1,41 @@
-// =====================
-// ASSIGNMENTS AND GRADEBOOK - COMPLETE
-// =====================
+// js/assignments.js - Assignments & Gradebook Module
+console.log('📝 Loading assignments module...');
 
-// Global state for assignments
-let currentAssignments = [];
-let currentFilter = 'all';
+// =====================
+// MODULE STATE
+// =====================
+const AssignmentsState = {
+    currentAssignments: [],
+    currentFilter: 'all',
+    submissions: [],
+    grades: []
+};
+
+// =====================
+// MODULE INITIALIZATION
+// =====================
 
 // Initialize assignments module
-function initAssignmentsModule() {
+function initAssignments() {
     console.log('📝 Initializing assignments module');
     
+    // Listen for section changes
+    document.addEventListener('sectionChanged', async function(event) {
+        if (event.detail.section === 'assignments') {
+            console.log('📝 Loading assignments section');
+            await loadAssignmentsSection();
+        } else if (event.detail.section === 'grades') {
+            console.log('📊 Loading grades section');
+            await loadGradesSection();
+        }
+    });
+    
+    // Setup event listeners
+    setupAssignmentsListeners();
+}
+
+// Setup assignments event listeners
+function setupAssignmentsListeners() {
     // Setup filter buttons
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -18,7 +44,7 @@ function initAssignmentsModule() {
         });
     });
     
-    // Setup create assignment button
+    // Setup create assignment button (if exists)
     const createBtn = document.getElementById('create-assignment-btn');
     if (createBtn) {
         createBtn.addEventListener('click', createAssignment);
@@ -31,22 +57,22 @@ function initAssignmentsModule() {
     }
 }
 
-// Load assignments based on user role
+// =====================
+// ASSIGNMENTS SECTION
+// =====================
+
+// Load assignments section
 async function loadAssignmentsSection() {
-    console.log('📝 Loading assignments section');
+    console.log('📝 Loading assignments section for:', AppState.userRole);
     
     try {
-        if (!AppState.currentUser) {
-            showToast('Please log in to view assignments', 'error');
-            return;
-        }
-        
         // Show loading state
         const assignmentList = document.getElementById('assignment-list');
         if (assignmentList) {
-            assignmentList.innerHTML = '<div class="loading">Loading assignments...</div>';
+            assignmentList.innerHTML = '<div class="loading-state"><i class="fas fa-spinner fa-spin"></i> Loading assignments...</div>';
         }
         
+        // Load based on user role
         if (AppState.userRole === 'teacher') {
             await loadTeacherAssignments();
         } else {
@@ -54,8 +80,22 @@ async function loadAssignmentsSection() {
         }
         
     } catch (error) {
-        console.error('Error loading assignments section:', error);
+        console.error('❌ Error loading assignments section:', error);
         showToast('Error loading assignments', 'error');
+        
+        // Show error state
+        const assignmentList = document.getElementById('assignment-list');
+        if (assignmentList) {
+            assignmentList.innerHTML = `
+                <div class="empty-state error">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>Failed to load assignments</p>
+                    <button class="btn btn-sm btn-primary" onclick="loadAssignmentsSection()">
+                        Retry
+                    </button>
+                </div>
+            `;
+        }
     }
 }
 
@@ -78,12 +118,12 @@ async function loadTeacherAssignments() {
         
         if (error) throw error;
         
-        currentAssignments = data || [];
+        AssignmentsState.currentAssignments = data || [];
         renderTeacherAssignments();
         
     } catch (error) {
         console.error('Error loading teacher assignments:', error);
-        currentAssignments = [];
+        AssignmentsState.currentAssignments = [];
         renderTeacherAssignments();
     }
 }
@@ -101,7 +141,7 @@ async function loadStudentAssignments() {
         if (enrollError) throw enrollError;
         
         if (!enrollments || enrollments.length === 0) {
-            currentAssignments = [];
+            AssignmentsState.currentAssignments = [];
             renderStudentAssignments();
             return;
         }
@@ -126,19 +166,19 @@ async function loadStudentAssignments() {
         
         if (error) throw error;
         
-        currentAssignments = data || [];
+        AssignmentsState.currentAssignments = data || [];
         renderStudentAssignments();
         
     } catch (error) {
         console.error('Error loading student assignments:', error);
-        currentAssignments = [];
+        AssignmentsState.currentAssignments = [];
         renderStudentAssignments();
     }
 }
 
 // Render assignments for teachers
 function renderTeacherAssignments(filter = 'all') {
-    currentFilter = filter;
+    AssignmentsState.currentFilter = filter;
     const assignmentList = document.getElementById('assignment-list');
     
     if (!assignmentList) return;
@@ -152,7 +192,7 @@ function renderTeacherAssignments(filter = 'all') {
         }
     });
     
-    if (!currentAssignments || currentAssignments.length === 0) {
+    if (!AssignmentsState.currentAssignments || AssignmentsState.currentAssignments.length === 0) {
         assignmentList.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-tasks"></i>
@@ -166,22 +206,22 @@ function renderTeacherAssignments(filter = 'all') {
     }
     
     // Filter assignments
-    let filteredAssignments = currentAssignments;
+    let filteredAssignments = AssignmentsState.currentAssignments;
     const now = new Date();
     
     switch(filter) {
         case 'active':
-            filteredAssignments = currentAssignments.filter(a => 
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
                 new Date(a.due_date) > now
             );
             break;
         case 'completed':
-            filteredAssignments = currentAssignments.filter(a => 
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
                 new Date(a.due_date) < now
             );
             break;
         case 'pending-grading':
-            filteredAssignments = currentAssignments.filter(a => 
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
                 a.submissions_aggregate?.aggregate?.count > 0 &&
                 a.submissions_aggregate?.aggregate?.avg?.grade === null
             );
@@ -213,7 +253,7 @@ function renderTeacherAssignments(filter = 'all') {
                 
                 <div class="assignment-details">
                     <div class="assignment-info">
-                        <p class="assignment-description">${assignment.description || 'No description'}</p>
+                        <p class="assignment-description">${assignment.description || 'No description provided'}</p>
                         <div class="assignment-meta">
                             <span class="meta-item">
                                 <i class="far fa-calendar"></i>
@@ -261,7 +301,7 @@ function renderTeacherAssignments(filter = 'all') {
 
 // Render assignments for students
 function renderStudentAssignments(filter = 'all') {
-    currentFilter = filter;
+    AssignmentsState.currentFilter = filter;
     const assignmentList = document.getElementById('assignment-list');
     
     if (!assignmentList) return;
@@ -275,7 +315,7 @@ function renderStudentAssignments(filter = 'all') {
         }
     });
     
-    if (!currentAssignments || currentAssignments.length === 0) {
+    if (!AssignmentsState.currentAssignments || AssignmentsState.currentAssignments.length === 0) {
         assignmentList.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-tasks"></i>
@@ -287,29 +327,29 @@ function renderStudentAssignments(filter = 'all') {
     }
     
     // Filter assignments
-    let filteredAssignments = currentAssignments;
+    let filteredAssignments = AssignmentsState.currentAssignments;
     const now = new Date();
     
     switch(filter) {
         case 'pending':
-            filteredAssignments = currentAssignments.filter(a => {
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
                 return dueDate > now && !submission?.submitted_at;
             });
             break;
         case 'submitted':
-            filteredAssignments = currentAssignments.filter(a => 
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
                 a.submissions?.[0]?.submitted_at
             );
             break;
         case 'graded':
-            filteredAssignments = currentAssignments.filter(a => 
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
                 a.submissions?.[0]?.grade !== null
             );
             break;
         case 'overdue':
-            filteredAssignments = currentAssignments.filter(a => {
+            filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
                 return dueDate < now && !submission?.submitted_at;
@@ -362,7 +402,7 @@ function renderStudentAssignments(filter = 'all') {
                 
                 <div class="assignment-details">
                     <div class="assignment-info">
-                        <p class="assignment-description">${assignment.description || 'No description'}</p>
+                        <p class="assignment-description">${assignment.description || 'No description provided'}</p>
                         <div class="assignment-meta">
                             <span class="meta-item">
                                 <i class="far fa-calendar"></i>
@@ -420,9 +460,10 @@ function filterAssignments(filter) {
 }
 
 // =====================
-// ASSIGNMENT CREATION & MANAGEMENT
+// ASSIGNMENT MANAGEMENT
 // =====================
 
+// Create new assignment
 async function createAssignment() {
     if (AppState.userRole !== 'teacher') {
         showToast('Only teachers can create assignments', 'error');
@@ -515,6 +556,7 @@ async function createAssignment() {
     }
 }
 
+// Save new assignment
 async function saveNewAssignment() {
     const title = document.getElementById('assignment-title')?.value;
     const description = document.getElementById('assignment-description')?.value;
@@ -557,9 +599,10 @@ async function saveNewAssignment() {
     }
 }
 
+// Submit assignment
 async function submitAssignment(assignmentId) {
     try {
-        const assignment = currentAssignments.find(a => a.id === assignmentId);
+        const assignment = AssignmentsState.currentAssignments.find(a => a.id === assignmentId);
         if (!assignment) {
             showToast('Assignment not found', 'error');
             return;
@@ -598,6 +641,7 @@ async function submitAssignment(assignmentId) {
     }
 }
 
+// Grade assignment
 async function gradeAssignment(assignmentId) {
     try {
         // Load assignment details
@@ -692,6 +736,7 @@ async function gradeAssignment(assignmentId) {
     }
 }
 
+// Save grade
 async function saveGrade(submissionId, assignmentId) {
     const gradeInput = document.getElementById(`grade-${submissionId}`);
     const feedbackInput = document.getElementById(`feedback-${submissionId}`);
@@ -734,12 +779,11 @@ async function saveGrade(submissionId, assignmentId) {
 // GRADES SECTION
 // =====================
 
+// Load grades section
 async function loadGradesSection() {
-    console.log('📊 Loading grades section');
+    console.log('📊 Loading grades section for:', AppState.userRole);
     
     try {
-        if (!AppState.currentUser) return;
-        
         if (AppState.userRole === 'teacher') {
             await loadTeacherGrades();
         } else {
@@ -747,11 +791,12 @@ async function loadGradesSection() {
         }
         
     } catch (error) {
-        console.error('Error loading grades section:', error);
+        console.error('❌ Error loading grades section:', error);
         showToast('Error loading grades', 'error');
     }
 }
 
+// Load student grades
 async function loadStudentGrades() {
     try {
         // Get all submissions with assignment details
@@ -843,6 +888,7 @@ async function loadStudentGrades() {
     }
 }
 
+// Load teacher grades
 async function loadTeacherGrades() {
     try {
         // Get all assignments created by teacher
@@ -942,6 +988,7 @@ async function loadTeacherGrades() {
     }
 }
 
+// Update grade statistics
 function updateGradeStatistics(stats) {
     // Update overall grade
     const overallGradeEl = document.getElementById('overall-grade');
@@ -981,6 +1028,7 @@ function updateGradeStatistics(stats) {
 // UTILITY FUNCTIONS
 // =====================
 
+// Get letter grade from percentage
 function getLetterGrade(percentage) {
     if (percentage >= 97) return 'A+';
     if (percentage >= 93) return 'A';
@@ -997,6 +1045,7 @@ function getLetterGrade(percentage) {
     return 'F';
 }
 
+// Export grades
 async function exportGrades() {
     try {
         if (AppState.userRole === 'student') {
@@ -1010,6 +1059,7 @@ async function exportGrades() {
     }
 }
 
+// Export student grades
 async function exportStudentGrades() {
     try {
         const { data: submissions, error } = await window.supabase
@@ -1056,6 +1106,7 @@ async function exportStudentGrades() {
     }
 }
 
+// Export teacher grades
 async function exportTeacherGrades() {
     try {
         // Get all assignments with submissions
@@ -1105,6 +1156,7 @@ async function exportTeacherGrades() {
     }
 }
 
+// Download CSV file
 function downloadCSV(content, filename) {
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1166,23 +1218,25 @@ async function viewFeedbackModal(submissionId) {
 
 // Modal helper functions
 function showModal(content) {
-    const modalContainer = document.getElementById('modal-container');
+    // Check if modal container exists
+    let modalContainer = document.getElementById('modal-container');
     if (!modalContainer) {
-        // Create modal container if it doesn't exist
-        const container = document.createElement('div');
-        container.id = 'modal-container';
-        container.className = 'modal-container';
-        document.body.appendChild(container);
+        modalContainer = document.createElement('div');
+        modalContainer.id = 'modal-container';
+        modalContainer.className = 'modal-container';
+        document.body.appendChild(modalContainer);
     }
     
+    // Create modal
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.innerHTML = content;
     
-    document.getElementById('modal-container').innerHTML = '';
-    document.getElementById('modal-container').appendChild(modal);
+    // Clear and add new modal
+    modalContainer.innerHTML = '';
+    modalContainer.appendChild(modal);
     
-    // Show modal with animation
+    // Show with animation
     setTimeout(() => {
         modal.classList.add('show');
         document.body.style.overflow = 'hidden';
@@ -1203,7 +1257,42 @@ function closeModal() {
     }
 }
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    initAssignmentsModule();
-});
+// Format date time (needs to be defined or imported)
+function formatDateTime(dateString) {
+    if (!dateString) return 'Not scheduled';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffDays = Math.floor((date - now) / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+        return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffDays === 1) {
+        return `Tomorrow, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+        return date.toLocaleDateString('en-US', { 
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+}
+
+// =====================
+// MODULE EXPORTS
+// =====================
+
+// Export module functions
+window.initAssignments = initAssignments;
+window.loadAssignmentsSection = loadAssignmentsSection;
+window.loadGradesSection = loadGradesSection;
+window.createAssignment = createAssignment;
+window.submitAssignment = submitAssignment;
+window.gradeAssignment = gradeAssignment;
+window.filterAssignments = filterAssignments;
+window.exportGrades = exportGrades;
+window.viewFeedbackModal = viewFeedbackModal;
+
+console.log('✅ assignments.js loaded - Assignments module ready');
