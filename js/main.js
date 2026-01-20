@@ -151,13 +151,13 @@ async function handleAuthenticatedUser(user) {
         console.log('👤 Handling authenticated user:', user.email);
         
         // Update application state
-        updateUserState(user);
+        await updateUserState(user);
         
         // Show main application
         showMainApp();
         
-        // Update UI
-        updateUserUI();
+        // Update UI based on role
+        updateRoleBasedUI();
         
         // Show dashboard
         showSection('dashboard');
@@ -196,29 +196,35 @@ function handleUserSignedOut() {
 // STATE MANAGEMENT
 // =====================
 
-function updateUserState(user) {
+async function updateUserState(user) {
     AppState.currentUser = user;
-    AppState.userRole = user.user_metadata?.role || 'student';
+    
+    // Try to get role from database profile
+    try {
+        const { data: profile, error } = await window.supabase
+            .from('profiles')
+            .select('role, full_name')
+            .eq('id', user.id)
+            .single();
+        
+        if (!error && profile) {
+            AppState.userRole = profile.role || 'student';
+            AppState.currentUser.full_name = profile.full_name || user.email;
+        } else {
+            // Fallback to user_metadata
+            AppState.userRole = user.user_metadata?.role || 'student';
+            AppState.currentUser.full_name = user.user_metadata?.full_name || user.email;
+        }
+    } catch (error) {
+        console.warn('⚠️ Error fetching profile:', error);
+        AppState.userRole = user.user_metadata?.role || 'student';
+        AppState.currentUser.full_name = user.user_metadata?.full_name || user.email;
+    }
     
     // Store in localStorage for persistence
     localStorage.setItem('userRole', AppState.userRole);
     
     console.log(`👤 User role set to: ${AppState.userRole}`);
-}
-
-function updateUserUI() {
-    // Update user info display
-    if (typeof updateUserInfo === 'function') {
-        updateUserInfo();
-    }
-    
-    // Update navigation based on role
-    if (typeof updateNavigation === 'function') {
-        updateNavigation();
-    }
-    
-    // Update welcome message
-    updateWelcomeMessage();
 }
 
 function resetAppState() {
@@ -232,6 +238,176 @@ function resetAppState() {
     
     // Clear localStorage
     localStorage.removeItem('userRole');
+    document.body.removeAttribute('data-role');
+}
+
+// =====================
+// ROLE-BASED UI UPDATES
+// =====================
+
+function updateRoleBasedUI() {
+    console.log('🎭 Updating UI for role:', AppState.userRole);
+    
+    if (!AppState.userRole) return;
+    
+    // Set data-role on body for CSS targeting
+    document.body.setAttribute('data-role', AppState.userRole);
+    
+    // Update welcome message and role
+    updateWelcomeMessage();
+    
+    // Update navigation based on role
+    updateNavigationForRole();
+    
+    // Update quick actions
+    updateQuickActions();
+    
+    // Update dashboard content
+    updateDashboardForRole();
+}
+
+function updateWelcomeMessage() {
+    console.log('👤 Updating welcome message');
+    
+    if (!AppState.currentUser) return;
+    
+    const userName = AppState.currentUser.full_name || 
+                    AppState.currentUser.email?.split('@')[0] || 
+                    'User';
+    const role = AppState.userRole?.charAt(0).toUpperCase() + AppState.userRole?.slice(1) || 'User';
+    
+    // Update user name
+    const userNameElements = document.querySelectorAll('.user-name');
+    userNameElements.forEach(el => {
+        el.textContent = `Welcome, ${userName}`;
+    });
+    
+    // Update role badge
+    const roleElements = document.querySelectorAll('.user-role');
+    roleElements.forEach(el => {
+        el.textContent = role;
+        
+        // Add role-specific styling
+        el.className = 'user-role';
+        el.classList.add(`${AppState.userRole}-badge`);
+    });
+}
+
+function updateNavigationForRole() {
+    console.log('🧭 Updating navigation for role:', AppState.userRole);
+    
+    // Hide/show navigation items based on role
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+        const allowedRoles = item.dataset.roles;
+        if (allowedRoles) {
+            const roles = allowedRoles.split(',');
+            item.style.display = roles.includes(AppState.userRole) ? 'flex' : 'none';
+        }
+    });
+}
+
+function updateQuickActions() {
+    console.log('⚡ Updating quick actions for role:', AppState.userRole);
+    
+    const quickActions = document.getElementById('quick-actions');
+    if (!quickActions) return;
+    
+    if (AppState.userRole === 'teacher') {
+        quickActions.innerHTML = `
+            <button class="quick-action-btn" onclick="showSection('classroom')">
+                <i class="fas fa-video"></i>
+                <span>Start Class</span>
+            </button>
+            <button class="quick-action-btn" onclick="createAssignmentModal()">
+                <i class="fas fa-plus"></i>
+                <span>New Assignment</span>
+            </button>
+            <button class="quick-action-btn" onclick="sendAnnouncement()">
+                <i class="fas fa-bullhorn"></i>
+                <span>Send Announcement</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('grades')">
+                <i class="fas fa-chart-bar"></i>
+                <span>View Grades</span>
+            </button>
+        `;
+    } else {
+        quickActions.innerHTML = `
+            <button class="quick-action-btn" onclick="showSection('classroom')">
+                <i class="fas fa-video"></i>
+                <span>Join Class</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('assignments')">
+                <i class="fas fa-tasks"></i>
+                <span>View Assignments</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('grades')">
+                <i class="fas fa-chart-bar"></i>
+                <span>My Grades</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('resources')">
+                <i class="fas fa-folder-open"></i>
+                <span>Study Materials</span>
+            </button>
+        `;
+    }
+}
+
+function updateDashboardForRole() {
+    console.log('📊 Updating dashboard for role:', AppState.userRole);
+    
+    const sectionHeader = document.querySelector('#dashboard-section .section-header');
+    if (!sectionHeader) return;
+    
+    const actionsDiv = sectionHeader.querySelector('.actions');
+    if (!actionsDiv) return;
+    
+    // Update header text
+    const headerTitle = sectionHeader.querySelector('h2');
+    if (headerTitle) {
+        if (AppState.userRole === 'teacher') {
+            headerTitle.textContent = 'Teacher Dashboard';
+        } else {
+            headerTitle.textContent = 'Student Dashboard';
+        }
+    }
+}
+
+function resetUI() {
+    console.log('🔄 Resetting UI');
+    
+    // Clear user info
+    const userInfo = document.getElementById('user-info');
+    if (userInfo) {
+        userInfo.innerHTML = '<span class="user-name">Welcome, Guest</span><span class="user-role">Guest</span>';
+    }
+    
+    // Reset navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        item.style.display = 'flex'; // Reset display
+    });
+    
+    // Reset body attribute
+    document.body.removeAttribute('data-role');
+    
+    // Reset quick actions
+    const quickActions = document.getElementById('quick-actions');
+    if (quickActions) {
+        quickActions.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-bolt"></i>
+                <p>Please log in to see actions</p>
+            </div>
+        `;
+    }
+    
+    // Activate dashboard nav item
+    const dashboardNav = document.querySelector('.nav-item[data-section="dashboard"]');
+    if (dashboardNav) {
+        dashboardNav.classList.add('active');
+    }
 }
 
 // =====================
@@ -269,7 +445,8 @@ function setupGlobalListeners() {
         const navItem = e.target.closest('.nav-item');
         if (navItem) {
             e.preventDefault();
-            const section = navItem.dataset.section || navItem.getAttribute('onclick')?.match(/showSection\('(.+?)'\)/)?.[1];
+            const section = navItem.dataset.section || 
+                           navItem.getAttribute('onclick')?.match(/showSection\('(.+?)'\)/)?.[1];
             if (section) {
                 showSection(section);
             }
@@ -342,6 +519,11 @@ function showSectionContent(sectionId) {
     if (targetSection) {
         targetSection.classList.add('active');
         targetSection.style.display = 'block';
+        
+        // Update role-based UI for this section
+        if (sectionId === 'dashboard') {
+            updateDashboardForRole();
+        }
     }
 }
 
@@ -350,31 +532,6 @@ function triggerSectionLoad(sectionId) {
     document.dispatchEvent(new CustomEvent('sectionChanged', {
         detail: { section: sectionId, userRole: AppState.userRole }
     }));
-}
-
-function updateWelcomeMessage() {
-    const welcomeElement = document.querySelector('.welcome-message, .user-name');
-    if (welcomeElement && AppState.currentUser) {
-        const userName = AppState.currentUser.user_metadata?.full_name || 
-                        AppState.currentUser.email?.split('@')[0] || 
-                        'User';
-        const role = AppState.userRole?.charAt(0).toUpperCase() + AppState.userRole?.slice(1);
-        welcomeElement.textContent = `Welcome, ${userName}`;
-        
-        // Update role badge if exists
-        const roleBadge = document.querySelector('.user-role, .role-badge');
-        if (roleBadge) {
-            roleBadge.textContent = role;
-            
-            // Set color based on role
-            const colors = {
-                teacher: '#4f46e5',
-                student: '#10b981',
-                admin: '#ef4444'
-            };
-            roleBadge.style.color = colors[AppState.userRole] || '#6b7280';
-        }
-    }
 }
 
 // =====================
@@ -423,25 +580,6 @@ function clearLoginForms() {
     
     if (emailInput) emailInput.value = '';
     if (passwordInput) passwordInput.value = '';
-}
-
-function resetUI() {
-    // Clear user info
-    const userInfo = document.getElementById('user-info');
-    if (userInfo) {
-        userInfo.innerHTML = '<span class="user-name">Loading...</span><span class="user-role">Loading...</span>';
-    }
-    
-    // Reset navigation
-    document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    
-    // Activate dashboard nav item
-    const dashboardNav = document.querySelector('.nav-item[data-section="dashboard"]');
-    if (dashboardNav) {
-        dashboardNav.classList.add('active');
-    }
 }
 
 // =====================
@@ -620,15 +758,27 @@ if (typeof loadEnrolledClasses === 'undefined') {
     };
 }
 
-if (typeof updateUserInfo === 'undefined') {
-    window.updateUserInfo = function() {
-        console.log('👤 Placeholder: Updating user info');
+// Add createClassModal to window if not defined by classroom.js
+if (typeof createClassModal === 'undefined') {
+    window.createClassModal = function() {
+        console.log('🏫 Placeholder: Opening create class modal');
+        showToast('Create class functionality not loaded', 'warning');
     };
 }
 
-if (typeof updateNavigation === 'undefined') {
-    window.updateNavigation = function() {
-        console.log('🧭 Placeholder: Updating navigation');
+// Add createAssignmentModal to window
+if (typeof createAssignmentModal === 'undefined') {
+    window.createAssignmentModal = function() {
+        console.log('📝 Placeholder: Opening create assignment modal');
+        showToast('Create assignment functionality not loaded', 'warning');
+    };
+}
+
+// Add sendAnnouncement to window
+if (typeof sendAnnouncement === 'undefined') {
+    window.sendAnnouncement = function() {
+        console.log('📢 Placeholder: Sending announcement');
+        showToast('Announcement functionality not loaded', 'warning');
     };
 }
 
