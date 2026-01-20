@@ -4,11 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EduMeet - Online Classroom</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Font Awesome -->
+    
+    <!-- External Libraries -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Toastify -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Supabase -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <!-- Loading Screen -->
@@ -18,7 +21,7 @@
     </div>
 
     <!-- Auth Screens -->
-    <div id="auth-screens">
+    <div id="auth-screens" class="hidden">
         <!-- Login Screen -->
         <div id="login-screen" class="auth-screen">
             <div class="auth-container">
@@ -36,18 +39,16 @@
                 <div id="login-form" class="auth-form active">
                     <div class="form-group">
                         <label for="login-email">Email</label>
-                        <input type="email" id="login-email" placeholder="teacher@edumeet.com">
+                        <input type="email" id="login-email" placeholder="Enter your email">
                     </div>
                     <div class="form-group">
                         <label for="login-password">Password</label>
-                        <input type="password" id="login-password" placeholder="••••••••">
+                        <input type="password" id="login-password" placeholder="Enter your password">
                     </div>
                     <button onclick="login()" class="btn btn-primary">Sign In</button>
                     
                     <div class="auth-footer">
-                        <p>Demo Accounts:</p>
-                        <p><strong>Teacher:</strong> teacher@edumeet.com / password123</p>
-                        <p><strong>Student:</strong> student@edumeet.com / password123</p>
+                        <a href="#" onclick="forgotPassword()">Forgot password?</a>
                     </div>
                 </div>
 
@@ -55,15 +56,15 @@
                 <div id="register-form" class="auth-form">
                     <div class="form-group">
                         <label for="register-name">Full Name</label>
-                        <input type="text" id="register-name" placeholder="John Doe">
+                        <input type="text" id="register-name" placeholder="Enter your full name">
                     </div>
                     <div class="form-group">
                         <label for="register-email">Email</label>
-                        <input type="email" id="register-email" placeholder="you@example.com">
+                        <input type="email" id="register-email" placeholder="Enter your email">
                     </div>
                     <div class="form-group">
                         <label for="register-password">Password</label>
-                        <input type="password" id="register-password" placeholder="••••••••">
+                        <input type="password" id="register-password" placeholder="Create a password">
                     </div>
                     <div class="form-group">
                         <label for="register-role">Role</label>
@@ -89,7 +90,7 @@
                 </div>
                 <div class="user-info" id="user-info">
                     <span class="user-name">Loading...</span>
-                    <span class="user-role">Student</span>
+                    <span class="user-role">Loading...</span>
                 </div>
             </div>
             
@@ -103,7 +104,7 @@
             <div class="header-right">
                 <button class="btn-icon" onclick="toggleNotifications()">
                     <i class="fas fa-bell"></i>
-                    <span class="notification-badge" id="notification-count">0</span>
+                    <span class="notification-badge hidden" id="notification-count">0</span>
                 </button>
                 <button class="btn-icon" onclick="openSettings()">
                     <i class="fas fa-cog"></i>
@@ -178,7 +179,7 @@
                                     <i class="fas fa-calendar-check"></i>
                                 </div>
                                 <div class="stat-info">
-                                    <h3 id="attendance-rate">95%</h3>
+                                    <h3 id="attendance-rate">--</h3>
                                     <p>Attendance Rate</p>
                                 </div>
                             </div>
@@ -187,7 +188,7 @@
                                     <i class="fas fa-tasks"></i>
                                 </div>
                                 <div class="stat-info">
-                                    <h3 id="assignments-due">3</h3>
+                                    <h3 id="assignments-due">--</h3>
                                     <p>Assignments Due</p>
                                 </div>
                             </div>
@@ -196,7 +197,7 @@
                                     <i class="fas fa-chart-line"></i>
                                 </div>
                                 <div class="stat-info">
-                                    <h3 id="avg-grade">A-</h3>
+                                    <h3 id="avg-grade">--</h3>
                                     <p>Average Grade</p>
                                 </div>
                             </div>
@@ -205,7 +206,7 @@
                                     <i class="fas fa-clock"></i>
                                 </div>
                                 <div class="stat-info">
-                                    <h3 id="next-class">30m</h3>
+                                    <h3 id="next-class">--</h3>
                                     <p>Next Class</p>
                                 </div>
                             </div>
@@ -214,11 +215,14 @@
                         <!-- Upcoming Classes -->
                         <div class="card">
                             <div class="card-header">
-                                <h3><i class="fas fa-chalkboard-teacher"></i> Today's Classes</h3>
+                                <h3><i class="fas fa-chalkboard-teacher"></i> Upcoming Classes</h3>
                             </div>
                             <div class="card-body">
                                 <div class="class-list" id="upcoming-classes">
-                                    <!-- Classes will load here -->
+                                    <div class="empty-state">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        <p>No upcoming classes</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -230,7 +234,10 @@
                             </div>
                             <div class="card-body">
                                 <div class="announcement-list" id="announcements">
-                                    <!-- Announcements will load here -->
+                                    <div class="empty-state">
+                                        <i class="fas fa-bullhorn"></i>
+                                        <p>No announcements</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -279,72 +286,7 @@
                     </div>
 
                     <div class="classroom-container" id="classroom-container">
-                        <!-- Video Grid -->
-                        <div class="classroom-main">
-                            <div class="video-grid" id="video-grid">
-                                <!-- Video tiles will appear here -->
-                            </div>
-                            
-                            <!-- Classroom Controls -->
-                            <div class="classroom-controls">
-                                <button class="control-btn" id="video-toggle" onclick="toggleVideo()">
-                                    <i class="fas fa-video"></i>
-                                    <span>Video</span>
-                                </button>
-                                <button class="control-btn" id="audio-toggle" onclick="toggleAudio()">
-                                    <i class="fas fa-microphone"></i>
-                                    <span>Audio</span>
-                                </button>
-                                <button class="control-btn" onclick="toggleScreenShare()">
-                                    <i class="fas fa-desktop"></i>
-                                    <span>Share</span>
-                                </button>
-                                <button class="control-btn btn-warning" onclick="raiseHand()">
-                                    <i class="fas fa-hand-paper"></i>
-                                    <span>Raise Hand</span>
-                                </button>
-                                <button class="control-btn btn-danger" onclick="leaveClass()">
-                                    <i class="fas fa-phone-slash"></i>
-                                    <span>Leave</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Sidebar -->
-                        <div class="classroom-sidebar">
-                            <!-- Chat -->
-                            <div class="sidebar-tab active" id="chat-tab">
-                                <div class="chat-header">
-                                    <h3><i class="fas fa-comments"></i> Chat</h3>
-                                </div>
-                                <div class="chat-messages" id="chat-messages">
-                                    <!-- Messages will appear here -->
-                                </div>
-                                <div class="chat-input">
-                                    <input type="text" id="chat-input" placeholder="Type a message...">
-                                    <button onclick="sendMessage()">
-                                        <i class="fas fa-paper-plane"></i>
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Participants -->
-                            <div class="sidebar-tab" id="participants-tab">
-                                <div class="participants-list" id="participants-list">
-                                    <!-- Participants will appear here -->
-                                </div>
-                            </div>
-
-                            <!-- Whiteboard -->
-                            <div class="sidebar-tab" id="whiteboard-tab">
-                                <canvas id="whiteboard" width="400" height="300"></canvas>
-                                <div class="whiteboard-tools">
-                                    <button onclick="changeTool('pencil')">✏️</button>
-                                    <button onclick="changeTool('eraser')">🧹</button>
-                                    <input type="color" id="draw-color" value="#000000">
-                                </div>
-                            </div>
-                        </div>
+                        <!-- Classroom will load here -->
                     </div>
                 </section>
 
@@ -360,7 +302,6 @@
                     </div>
 
                     <div class="assignments-container">
-                        <!-- Assignment List -->
                         <div class="card">
                             <div class="card-header">
                                 <h3>Your Assignments</h3>
@@ -373,7 +314,10 @@
                             </div>
                             <div class="card-body">
                                 <div class="assignment-list" id="assignment-list">
-                                    <!-- Assignments will load here -->
+                                    <div class="empty-state">
+                                        <i class="fas fa-tasks"></i>
+                                        <p>No assignments yet</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -395,21 +339,21 @@
                         <div class="grade-overview">
                             <div class="grade-card">
                                 <h3>Overall Grade</h3>
-                                <div class="grade-circle" id="overall-grade">A-</div>
-                                <p>Average: <span id="average-score">92%</span></p>
+                                <div class="grade-circle" id="overall-grade">--</div>
+                                <p>Average: <span id="average-score">--</span></p>
                             </div>
                             <div class="grade-stats">
                                 <div class="stat-item">
                                     <span class="stat-label">Assignments</span>
-                                    <span class="stat-value" id="total-assignments">15</span>
+                                    <span class="stat-value" id="total-assignments">--</span>
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Submitted</span>
-                                    <span class="stat-value" id="submitted-count">14</span>
+                                    <span class="stat-value" id="submitted-count">--</span>
                                 </div>
                                 <div class="stat-item">
                                     <span class="stat-label">Average</span>
-                                    <span class="stat-value" id="average-grade">92%</span>
+                                    <span class="stat-value" id="average-grade">--</span>
                                 </div>
                             </div>
                         </div>
@@ -431,7 +375,11 @@
                                         </tr>
                                     </thead>
                                     <tbody id="grades-table">
-                                        <!-- Grades will load here -->
+                                        <tr>
+                                            <td colspan="6" class="empty-state">
+                                                No grades available
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -449,7 +397,12 @@
                             </button>
                         </div>
                     </div>
-                    <div class="calendar-container" id="calendar"></div>
+                    <div class="calendar-container" id="calendar">
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-alt"></i>
+                            <p>Calendar will be displayed here</p>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Resources -->
@@ -462,7 +415,12 @@
                             </button>
                         </div>
                     </div>
-                    <div class="resources-grid" id="resources-grid"></div>
+                    <div class="resources-grid" id="resources-grid">
+                        <div class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <p>No resources uploaded yet</p>
+                        </div>
+                    </div>
                 </section>
 
                 <!-- Discussions -->
@@ -475,7 +433,12 @@
                             </button>
                         </div>
                     </div>
-                    <div class="discussions-container" id="discussions-container"></div>
+                    <div class="discussions-container" id="discussions-container">
+                        <div class="empty-state">
+                            <i class="fas fa-comments"></i>
+                            <p>No discussions yet</p>
+                        </div>
+                    </div>
                 </section>
             </main>
         </div>
@@ -483,7 +446,7 @@
         <!-- Modals -->
         <div id="modals">
             <!-- Create Class Modal -->
-            <div id="create-class-modal" class="modal">
+            <div id="create-class-modal" class="modal hidden">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Create New Class</h3>
@@ -515,26 +478,50 @@
             </div>
 
             <!-- Create Assignment Modal -->
-            <div id="create-assignment-modal" class="modal">
+            <div id="create-assignment-modal" class="modal hidden">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Create Assignment</h3>
                         <button class="modal-close" onclick="closeModal('create-assignment-modal')">&times;</button>
                     </div>
                     <div class="modal-body">
-                        <!-- Assignment form -->
+                        <div class="form-group">
+                            <label>Assignment Title</label>
+                            <input type="text" id="assignment-title" placeholder="Enter assignment title">
+                        </div>
+                        <div class="form-group">
+                            <label>Description</label>
+                            <textarea id="assignment-description" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Due Date</label>
+                            <input type="datetime-local" id="assignment-due-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Max Points</label>
+                            <input type="number" id="assignment-points" value="100">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="closeModal('create-assignment-modal')">Cancel</button>
+                        <button class="btn btn-primary" onclick="saveAssignment()">Create Assignment</button>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Notifications Panel -->
-        <div id="notifications-panel" class="notifications-panel">
+        <div id="notifications-panel" class="notifications-panel hidden">
             <div class="notifications-header">
                 <h3><i class="fas fa-bell"></i> Notifications</h3>
                 <button class="btn-icon" onclick="toggleNotifications()">&times;</button>
             </div>
-            <div class="notifications-list" id="notifications-list"></div>
+            <div class="notifications-list" id="notifications-list">
+                <div class="empty-state">
+                    <i class="fas fa-bell-slash"></i>
+                    <p>No notifications</p>
+                </div>
+            </div>
         </div>
     </div>
 
