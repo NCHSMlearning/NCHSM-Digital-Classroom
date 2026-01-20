@@ -570,7 +570,6 @@ async function createAssignment() {
     }
 }
 
-// Save new assignment - FOR HTML MODAL
 async function saveAssignment() {
     console.log('saveAssignment called');
     
@@ -588,13 +587,59 @@ async function saveAssignment() {
     }
     
     try {
+        // Get the user profile, not auth user
+        const { data: userProfile, error: profileError } = await window.supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('user_id', AppState.currentUser.id)  // Assuming AppState.currentUser.id is from auth.users
+            .single();
+        
+        if (profileError) {
+            console.error('Error fetching user profile:', profileError);
+            
+            // If no profile exists, create one
+            if (profileError.code === 'PGRST116') { // No rows returned
+                showToast('Creating user profile...', 'info');
+                
+                // Create user profile first
+                const { data: newProfile, error: createError } = await window.supabase
+                    .from('user_profiles')
+                    .insert([{
+                        user_id: AppState.currentUser.id,
+                        full_name: AppState.currentUser.email?.split('@')[0] || 'Teacher',
+                        role: 'teacher',
+                        created_at: new Date().toISOString()
+                    }])
+                    .select()
+                    .single();
+                
+                if (createError) {
+                    console.error('Error creating user profile:', createError);
+                    showToast('Error creating user profile: ' + createError.message, 'error');
+                    return;
+                }
+                
+                userProfile = newProfile;
+            } else {
+                throw profileError;
+            }
+        }
+        
+        if (!userProfile || !userProfile.id) {
+            showToast('User profile not found', 'error');
+            return;
+        }
+        
+        console.log('User profile ID:', userProfile.id);
+        
         const assignmentData = {
             title: title.trim(),
             description: description?.trim() || null,
             due_date: dueDate,
             max_points: parseInt(points),
-            created_by: AppState.currentUser.id,
-            created_at: new Date().toISOString()
+            created_by: userProfile.id,  // Use user_profiles.id, not auth.users.id
+            created_at: new Date().toISOString(),
+            is_published: true
         };
         
         // Only add course_id if a class is selected
@@ -602,13 +647,18 @@ async function saveAssignment() {
             assignmentData.course_id = classId;
         }
         
+        console.log('Inserting assignment with created_by:', assignmentData.created_by);
+        
         const { data, error } = await window.supabase
             .from('assignments')
             .insert([assignmentData])
             .select()
             .single();
         
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase error:', error);
+            throw error;
+        }
         
         showToast('Assignment created successfully!', 'success');
         
