@@ -12,6 +12,39 @@
     
     <!-- Supabase -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    
+    <style>
+        /* Role-specific styles */
+        .teacher-only { display: none; }
+        .student-only { display: none; }
+        
+        /* Show based on data-role attribute */
+        body[data-role="teacher"] .teacher-only { display: block !important; }
+        body[data-role="student"] .student-only { display: block !important; }
+        
+        /* Role badges */
+        .user-role {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .teacher-badge {
+            color: #4f46e5;
+            background-color: #e0e7ff;
+        }
+        
+        .student-badge {
+            color: #10b981;
+            background-color: #d1fae5;
+        }
+        
+        .admin-badge {
+            color: #ef4444;
+            background-color: #fee2e2;
+        }
+    </style>
 </head>
 <body>
     <!-- Loading Screen -->
@@ -165,7 +198,7 @@
                     <div class="section-header">
                         <h2>Dashboard</h2>
                         <div class="actions">
-                            <button class="btn btn-primary" onclick="createClass()">
+                            <button class="btn btn-primary teacher-only" onclick="createClassModal()">
                                 <i class="fas fa-plus"></i> New Class
                             </button>
                         </div>
@@ -248,23 +281,12 @@
                                 <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
                             </div>
                             <div class="card-body">
-                                <div class="quick-actions">
-                                    <button class="quick-action-btn" onclick="showSection('classroom')">
-                                        <i class="fas fa-video"></i>
-                                        <span>Join Class</span>
-                                    </button>
-                                    <button class="quick-action-btn" onclick="createAssignment()">
-                                        <i class="fas fa-plus"></i>
-                                        <span>New Assignment</span>
-                                    </button>
-                                    <button class="quick-action-btn" onclick="sendAnnouncement()">
-                                        <i class="fas fa-bullhorn"></i>
-                                        <span>Send Announcement</span>
-                                    </button>
-                                    <button class="quick-action-btn" onclick="showSection('grades')">
-                                        <i class="fas fa-chart-bar"></i>
-                                        <span>View Grades</span>
-                                    </button>
+                                <div class="quick-actions" id="quick-actions">
+                                    <!-- Will be populated by JavaScript based on role -->
+                                    <div class="empty-state">
+                                        <i class="fas fa-bolt"></i>
+                                        <p>Loading quick actions...</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -279,7 +301,7 @@
                             <button class="btn btn-primary" id="join-class-btn" onclick="joinClass()">
                                 <i class="fas fa-video"></i> Join Class
                             </button>
-                            <button class="btn btn-secondary" id="create-class-btn" onclick="createClass()">
+                            <button class="btn btn-secondary teacher-only" id="create-class-btn" onclick="createClassModal()">
                                 <i class="fas fa-plus"></i> Create Class
                             </button>
                         </div>
@@ -295,7 +317,7 @@
                     <div class="section-header">
                         <h2>Assignments</h2>
                         <div class="actions">
-                            <button class="btn btn-primary" onclick="createAssignment()">
+                            <button class="btn btn-primary teacher-only" onclick="createAssignment()">
                                 <i class="fas fa-plus"></i> New Assignment
                             </button>
                         </div>
@@ -329,7 +351,7 @@
                     <div class="section-header">
                         <h2>Grades</h2>
                         <div class="actions">
-                            <button class="btn btn-secondary" onclick="exportGrades()">
+                            <button class="btn btn-secondary teacher-only" onclick="exportGrades()">
                                 <i class="fas fa-download"></i> Export
                             </button>
                         </div>
@@ -392,7 +414,7 @@
                     <div class="section-header">
                         <h2>Calendar</h2>
                         <div class="actions">
-                            <button class="btn btn-primary" onclick="addCalendarEvent()">
+                            <button class="btn btn-primary teacher-only" onclick="addCalendarEvent()">
                                 <i class="fas fa-plus"></i> Add Event
                             </button>
                         </div>
@@ -410,7 +432,7 @@
                     <div class="section-header">
                         <h2>Resources</h2>
                         <div class="actions">
-                            <button class="btn btn-primary" onclick="uploadResource()">
+                            <button class="btn btn-primary teacher-only" onclick="uploadResource()">
                                 <i class="fas fa-upload"></i> Upload
                             </button>
                         </div>
@@ -428,7 +450,7 @@
                     <div class="section-header">
                         <h2>Discussions</h2>
                         <div class="actions">
-                            <button class="btn btn-primary" onclick="createDiscussion()">
+                            <button class="btn btn-primary teacher-only" onclick="createDiscussion()">
                                 <i class="fas fa-plus"></i> New Discussion
                             </button>
                         </div>
@@ -525,7 +547,7 @@
         </div>
     </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/ui.js"></script>
     <script src="js/auth.js"></script>
@@ -533,5 +555,73 @@
     <script src="js/assignments.js"></script>
     <script src="js/classroom.js"></script>
     <script src="js/main.js"></script>
+    
+    <script>
+        // Global function to update role-based UI
+        window.updateRoleBasedUI = function() {
+            const role = window.AppState?.userRole || 'student';
+            
+            // Update body data-role attribute
+            document.body.setAttribute('data-role', role);
+            
+            // Update role badge
+            const roleElements = document.querySelectorAll('.user-role');
+            roleElements.forEach(el => {
+                el.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+                el.className = 'user-role';
+                el.classList.add(`${role}-badge`);
+            });
+            
+            // Update quick actions based on role
+            updateQuickActions();
+        };
+        
+        function updateQuickActions() {
+            const quickActions = document.getElementById('quick-actions');
+            if (!quickActions) return;
+            
+            const role = window.AppState?.userRole || 'student';
+            
+            if (role === 'teacher') {
+                quickActions.innerHTML = `
+                    <button class="quick-action-btn" onclick="showSection('classroom')">
+                        <i class="fas fa-video"></i>
+                        <span>Start Class</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="createAssignmentModal()">
+                        <i class="fas fa-plus"></i>
+                        <span>New Assignment</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="sendAnnouncement()">
+                        <i class="fas fa-bullhorn"></i>
+                        <span>Send Announcement</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="showSection('grades')">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>View Grades</span>
+                    </button>
+                `;
+            } else {
+                quickActions.innerHTML = `
+                    <button class="quick-action-btn" onclick="showSection('classroom')">
+                        <i class="fas fa-video"></i>
+                        <span>Join Class</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="showSection('assignments')">
+                        <i class="fas fa-tasks"></i>
+                        <span>View Assignments</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="showSection('grades')">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>My Grades</span>
+                    </button>
+                    <button class="quick-action-btn" onclick="showSection('resources')">
+                        <i class="fas fa-folder-open"></i>
+                        <span>Study Materials</span>
+                    </button>
+                `;
+            }
+        }
+    </script>
 </body>
 </html>
