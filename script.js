@@ -73,10 +73,35 @@ async function checkAuth() {
     }
 }
 
+let isProcessingAuth = false;
+let lastAuthProcessTime = 0;
+
 async function handleAuthenticatedUser(user) {
+    // Prevent multiple simultaneous calls
+    if (isProcessingAuth) {
+        console.log('⚠️ Auth already processing, skipping...');
+        return;
+    }
+    
+    // Prevent rapid successive calls (debounce)
+    const now = Date.now();
+    if (now - lastAuthProcessTime < 1000) { // 1 second debounce
+        console.log('⚠️ Auth called too soon, skipping...');
+        return;
+    }
+    
+    isProcessingAuth = true;
+    lastAuthProcessTime = now;
+    
     console.log('👤 User authenticated:', user.email);
     
     try {
+        // Check if user is already set (prevent re-processing)
+        if (AppState.currentUser && AppState.currentUser.id === user.id) {
+            console.log('👤 User already authenticated, skipping...');
+            return;
+        }
+        
         // Set user data
         AppState.currentUser = user;
         AppState.userRole = user.user_metadata?.role || 'student';
@@ -87,16 +112,27 @@ async function handleAuthenticatedUser(user) {
         // Update user info in UI
         updateUserInfo();
         
-        // Load user data
-        await loadUserData();
-        
         // Show dashboard section
         showSection('dashboard');
+        
+        // Load user data in background
+        setTimeout(() => {
+            loadUserData().then(() => {
+                console.log('✅ User data loaded successfully');
+            }).catch(error => {
+                console.error('Error loading user data:', error);
+            });
+        }, 100);
         
         console.log('✅ User session established');
         
     } catch (error) {
         console.error('Error handling authenticated user:', error);
+    } finally {
+        // Reset processing flag with delay
+        setTimeout(() => {
+            isProcessingAuth = false;
+        }, 500);
     }
 }
 
