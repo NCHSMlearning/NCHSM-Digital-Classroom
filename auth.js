@@ -1,175 +1,265 @@
-// In auth.js, update the handleUserSignedIn function:
+// auth.js - COMPLETE AUTHENTICATION FILE
+console.log('🔐 auth.js loading...');
 
-function handleUserSignedIn(user) {
-    window.appState.currentUser = user;
-    showMainApp();
-    loadUserData(user);
-    
-    // Role-based routing
-    const userRole = user.user_metadata?.role || 'student';
-    if (userRole === 'teacher') {
-        redirectToTeacherDashboard();
-    } else {
-        redirectToStudentDashboard();
-    }
-}
+// =====================
+// GLOBAL AUTH FUNCTIONS
+// =====================
 
-// Add these functions to auth.js:
-
-function redirectToTeacherDashboard() {
-    console.log('👨‍🏫 Redirecting to teacher dashboard');
+// Login function - MUST BE GLOBAL
+window.login = async function() {
+    console.log('🔑 Login function called');
     
-    // Update UI for teacher
-    updateTeacherUI();
+    const email = document.getElementById('login-email')?.value;
+    const password = document.getElementById('login-password')?.value;
     
-    // Load teacher-specific data
-    loadTeacherDashboard();
-    
-    // Show teacher-specific sections
-    showTeacherFeatures();
-}
-
-function redirectToStudentDashboard() {
-    console.log('👨‍🎓 Redirecting to student dashboard');
-    
-    // Update UI for student
-    updateStudentUI();
-    
-    // Load student-specific data
-    loadStudentDashboard();
-    
-    // Hide teacher-only features
-    hideTeacherFeatures();
-}
-
-function updateTeacherUI() {
-    // Show teacher-specific elements
-    const teacherElements = document.querySelectorAll('[data-teacher-only]');
-    teacherElements.forEach(el => {
-        el.style.display = '';
-    });
-    
-    // Update header role
-    const userRoleElement = document.querySelector('.user-role');
-    if (userRoleElement) {
-        userRoleElement.textContent = 'Teacher';
+    if (!email || !password) {
+        showToast('Please enter email and password', 'error');
+        return;
     }
     
-    // Update quick actions for teacher
-    updateTeacherQuickActions();
-}
-
-function updateStudentUI() {
-    // Hide teacher-only elements
-    const teacherElements = document.querySelectorAll('[data-teacher-only]');
-    teacherElements.forEach(el => {
-        el.style.display = 'none';
-    });
-    
-    // Update header role
-    const userRoleElement = document.querySelector('.user-role');
-    if (userRoleElement) {
-        userRoleElement.textContent = 'Student';
-    }
-    
-    // Update quick actions for student
-    updateStudentQuickActions();
-}
-
-function updateTeacherQuickActions() {
-    const quickActions = document.querySelector('.quick-actions');
-    if (quickActions) {
-        quickActions.innerHTML = `
-            <button class="quick-action-btn" onclick="createClass()">
-                <i class="fas fa-plus-circle"></i>
-                <span>Create Class</span>
-            </button>
-            <button class="quick-action-btn" onclick="createAssignment()">
-                <i class="fas fa-tasks"></i>
-                <span>Create Assignment</span>
-            </button>
-            <button class="quick-action-btn" onclick="showSection('grades')">
-                <i class="fas fa-chart-bar"></i>
-                <span>Grade Assignments</span>
-            </button>
-            <button class="quick-action-btn" onclick="sendAnnouncement()">
-                <i class="fas fa-bullhorn"></i>
-                <span>Send Announcement</span>
-            </button>
-        `;
-    }
-}
-
-function updateStudentQuickActions() {
-    const quickActions = document.querySelector('.quick-actions');
-    if (quickActions) {
-        quickActions.innerHTML = `
-            <button class="quick-action-btn" onclick="showSection('classroom')">
-                <i class="fas fa-video"></i>
-                <span>Join Class</span>
-            </button>
-            <button class="quick-action-btn" onclick="showSection('assignments')">
-                <i class="fas fa-tasks"></i>
-                <span>View Assignments</span>
-            </button>
-            <button class="quick-action-btn" onclick="showSection('grades')">
-                <i class="fas fa-chart-line"></i>
-                <span>View Grades</span>
-            </button>
-            <button class="quick-action-btn" onclick="showSection('resources')">
-                <i class="fas fa-folder-open"></i>
-                <span>Resources</span>
-            </button>
-        `;
-    }
-}
-
-async function loadTeacherDashboard() {
-    console.log('📊 Loading teacher dashboard');
+    console.log('Attempting login for:', email);
     
     try {
-        // Load teacher-specific data
-        await Promise.all([
-            loadTeacherClasses(),
-            loadPendingSubmissions(),
-            loadTeacherAnnouncements(),
-            loadTeacherStats()
-        ]);
+        // Check if Supabase is available
+        if (!window.supabase || !window.supabase.auth) {
+            throw new Error('Authentication service not available');
+        }
+        
+        const { data, error } = await window.supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+        
+        if (error) {
+            console.error('Login error:', error);
+            showToast('Invalid email or password', 'error');
+            return;
+        }
+        
+        console.log('✅ Login successful:', data.user.email);
+        showToast('Login successful!', 'success');
+        
+        // The auth state change listener in script.js will handle the redirect
         
     } catch (error) {
-        console.error('Teacher dashboard error:', error);
+        console.error('❌ Login error:', error);
+        showToast('Login failed. Please try again.', 'error');
     }
-}
+};
 
-async function loadStudentDashboard() {
-    console.log('📚 Loading student dashboard');
+// Register function - MUST BE GLOBAL
+window.register = async function() {
+    console.log('📝 Register function called');
+    
+    const name = document.getElementById('register-name')?.value;
+    const email = document.getElementById('register-email')?.value;
+    const password = document.getElementById('register-password')?.value;
+    const role = document.getElementById('register-role')?.value;
+    
+    if (!name || !email || !password || !role) {
+        showToast('Please fill all fields', 'error');
+        return;
+    }
+    
+    console.log('Attempting registration for:', email);
     
     try {
-        // Load student-specific data
-        await Promise.all([
-            loadStudentClasses(),
-            loadStudentAssignments(),
-            loadStudentGrades(),
-            loadStudentAnnouncements()
-        ]);
+        if (!window.supabase || !window.supabase.auth) {
+            throw new Error('Registration service not available');
+        }
+        
+        const { data, error } = await window.supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: {
+                    full_name: name,
+                    role: role
+                }
+            }
+        });
+        
+        if (error) {
+            console.error('Registration error:', error);
+            
+            let message = error.message;
+            if (error.message.includes('already registered')) {
+                message = 'This email is already registered. Try logging in instead.';
+            }
+            
+            showToast(message, 'error');
+            return;
+        }
+        
+        console.log('✅ Registration successful');
+        showToast('Registration successful! Please check your email to verify your account.', 'success');
+        
+        // Switch to login tab
+        showAuthTab('login');
+        
+        // Clear form
+        document.getElementById('register-name').value = '';
+        document.getElementById('register-email').value = '';
+        document.getElementById('register-password').value = '';
         
     } catch (error) {
-        console.error('Student dashboard error:', error);
+        console.error('❌ Registration error:', error);
+        showToast('Registration failed. Please try again.', 'error');
     }
+};
+
+// Logout function
+window.logout = async function() {
+    console.log('🚪 Logout function called');
+    
+    try {
+        if (!window.supabase?.auth) {
+            throw new Error('Logout service not available');
+        }
+        
+        const { error } = await window.supabase.auth.signOut();
+        
+        if (error) throw error;
+        
+        showToast('Logged out successfully', 'success');
+        
+    } catch (error) {
+        console.error('❌ Logout error:', error);
+        showToast('Logout failed', 'error');
+    }
+};
+
+// Forgot password
+window.forgotPassword = async function() {
+    const email = prompt('Enter your email to reset password:');
+    if (!email) return;
+    
+    try {
+        if (!window.supabase?.auth) {
+            throw new Error('Password reset not available');
+        }
+        
+        const { error } = await window.supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin
+        });
+        
+        if (error) throw error;
+        
+        showToast('Password reset email sent! Check your inbox.', 'success');
+        
+    } catch (error) {
+        console.error('❌ Password reset error:', error);
+        showToast('Failed to send reset email', 'error');
+    }
+};
+
+// Tab switching
+window.showAuthTab = function(tab) {
+    console.log('📱 Switching to tab:', tab);
+    
+    // Hide all forms
+    document.querySelectorAll('.auth-form').forEach(form => {
+        form.classList.remove('active');
+    });
+    
+    // Remove active from all tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected form
+    const form = document.getElementById(`${tab}-form`);
+    if (form) form.classList.add('active');
+    
+    // Activate selected tab
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        if (btn.textContent.toLowerCase().includes(tab)) {
+            btn.classList.add('active');
+        }
+    });
+};
+
+// =====================
+// HELPER FUNCTIONS
+// =====================
+
+// Toast function (if not defined elsewhere)
+if (typeof showToast === 'undefined') {
+    window.showToast = function(message, type = 'info') {
+        console.log(`📣 ${type}: ${message}`);
+        
+        if (typeof Toastify !== 'undefined') {
+            const colors = {
+                success: '#10b981',
+                error: '#ef4444',
+                warning: '#f59e0b',
+                info: '#3b82f6'
+            };
+            
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "right",
+                backgroundColor: colors[type] || colors.info,
+                stopOnFocus: true,
+            }).showToast();
+        }
+    };
 }
 
-function showTeacherFeatures() {
-    // Show teacher-only navigation items
-    const teacherNavItems = document.querySelectorAll('.nav-item[data-teacher-only]');
-    teacherNavItems.forEach(item => {
-        item.style.display = '';
-    });
+// =====================
+// MISSING FUNCTIONS FOR script.js
+// =====================
+
+// Add missing functions that script.js expects
+if (typeof loadTeacherNotifications === 'undefined') {
+    window.loadTeacherNotifications = async function() {
+        console.log('📨 Loading teacher notifications');
+        // Implementation would go here
+    };
 }
 
-function hideTeacherFeatures() {
-    // Hide teacher-only navigation items
-    const teacherNavItems = document.querySelectorAll('.nav-item[data-teacher-only]');
-    teacherNavItems.forEach(item => {
-        item.style.display = 'none';
-    });
+if (typeof loadAnnouncements === 'undefined') {
+    window.loadAnnouncements = async function() {
+        console.log('📢 Loading announcements');
+        // Implementation would go here
+    };
 }
+
+if (typeof loadTeacherData === 'undefined') {
+    window.loadTeacherData = async function() {
+        console.log('📊 Loading teacher data');
+        // Implementation would go here
+    };
+}
+
+if (typeof loadTeacherClasses === 'undefined') {
+    window.loadTeacherClasses = async function() {
+        console.log('🏫 Loading teacher classes');
+        // Implementation would go here
+    };
+}
+
+if (typeof loadPendingSubmissions === 'undefined') {
+    window.loadPendingSubmissions = async function() {
+        console.log('📄 Loading pending submissions');
+        // Implementation would go here
+    };
+}
+
+if (typeof loadNotifications === 'undefined') {
+    window.loadNotifications = async function() {
+        console.log('🔔 Loading notifications');
+        // Implementation would go here
+    };
+}
+
+if (typeof loadCalendarEvents === 'undefined') {
+    window.loadCalendarEvents = async function() {
+        console.log('📅 Loading calendar events');
+        // Implementation would go here
+    };
+}
+
+console.log('✅ auth.js loaded with all auth functions');
