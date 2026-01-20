@@ -587,27 +587,37 @@ async function saveAssignment() {
     }
     
     try {
-        // Get the user profile, not auth user
+        // Get current user's email from AppState or auth
+        const userEmail = AppState.currentUser?.email;
+        
+        if (!userEmail) {
+            showToast('User email not found', 'error');
+            return;
+        }
+        
+        console.log('Looking for user profile with email:', userEmail);
+        
+        // Get the user's profile by email
         const { data: userProfile, error: profileError } = await window.supabase
             .from('user_profiles')
             .select('id')
-            .eq('user_id', AppState.currentUser.id)  // Assuming AppState.currentUser.id is from auth.users
+            .eq('email', userEmail)
             .single();
         
         if (profileError) {
             console.error('Error fetching user profile:', profileError);
             
-            // If no profile exists, create one
+            // If profile doesn't exist, create it
             if (profileError.code === 'PGRST116') { // No rows returned
                 showToast('Creating user profile...', 'info');
                 
-                // Create user profile first
+                // Create user profile
                 const { data: newProfile, error: createError } = await window.supabase
                     .from('user_profiles')
                     .insert([{
-                        user_id: AppState.currentUser.id,
-                        full_name: AppState.currentUser.email?.split('@')[0] || 'Teacher',
-                        role: 'teacher',
+                        email: userEmail,
+                        full_name: userEmail.split('@')[0],
+                        role: AppState.userRole || 'teacher',
                         created_at: new Date().toISOString()
                     }])
                     .select()
@@ -619,25 +629,29 @@ async function saveAssignment() {
                     return;
                 }
                 
-                userProfile = newProfile;
+                // Use the newly created profile
+                profileId = newProfile.id;
+                console.log('Created new profile with ID:', profileId);
             } else {
                 throw profileError;
             }
+        } else {
+            // Use existing profile
+            profileId = userProfile.id;
+            console.log('Found existing profile ID:', profileId);
         }
         
-        if (!userProfile || !userProfile.id) {
-            showToast('User profile not found', 'error');
+        if (!profileId) {
+            showToast('Could not get user profile ID', 'error');
             return;
         }
-        
-        console.log('User profile ID:', userProfile.id);
         
         const assignmentData = {
             title: title.trim(),
             description: description?.trim() || null,
             due_date: dueDate,
             max_points: parseInt(points),
-            created_by: userProfile.id,  // Use user_profiles.id, not auth.users.id
+            created_by: profileId,  // user_profiles.id
             created_at: new Date().toISOString(),
             is_published: true
         };
@@ -657,6 +671,16 @@ async function saveAssignment() {
         
         if (error) {
             console.error('Supabase error:', error);
+            
+            // Additional debug: Check if profile ID exists
+            const { data: profileCheck } = await window.supabase
+                .from('user_profiles')
+                .select('id')
+                .eq('id', profileId)
+                .single();
+            
+            console.log('Profile check:', profileCheck);
+            
             throw error;
         }
         
@@ -680,7 +704,6 @@ async function saveAssignment() {
         showToast('Error creating assignment: ' + error.message, 'error');
     }
 }
-
 // Submit assignment
 async function submitAssignment(assignmentId) {
     try {
