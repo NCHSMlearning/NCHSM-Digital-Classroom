@@ -33,57 +33,88 @@ function initClassroom() {
         }
     });
     
-    // Setup event listeners
+    // Setup event listeners (ONCE only)
     setupClassroomListeners();
     
     // Cleanup on page unload
     window.addEventListener('beforeunload', cleanupClassroom);
 }
 
-// Setup classroom event listeners
+// Setup classroom event listeners - FIXED VERSION
 function setupClassroomListeners() {
     console.log('🏫 Setting up classroom listeners');
     
-    // Join class button
-    const joinClassBtn = document.getElementById('join-class-btn');
-    if (joinClassBtn) {
-        joinClassBtn.addEventListener('click', function() {
-            console.log('🎯 Join class button clicked');
-            joinClass();
-        });
+    // Track if we've already set up listeners
+    if (window._classroomListenersSetup) {
+        console.log('🏫 Listeners already set up, skipping');
+        return;
     }
     
-    // Create class button
-    const createClassBtn = document.getElementById('create-class-btn');
-    if (createClassBtn) {
-        createClassBtn.addEventListener('click', function() {
-            console.log('📝 Create class button clicked');
-            createClassModal();
-        });
+    // Flag to prevent duplicate setup
+    window._classroomListenersSetup = true;
+    
+    // Remove any inline onclick handlers from buttons
+    const createClassBtns = document.querySelectorAll('[onclick*="createClassModal"], [onclick*="saveClass"]');
+    createClassBtns.forEach(btn => {
+        btn.removeAttribute('onclick');
+    });
+    
+    // Use event delegation for ALL clicks
+    document.addEventListener('click', handleClassroomClicks, true);
+    
+    console.log('✅ Classroom listeners setup complete');
+}
+
+// Global click handler for classroom
+function handleClassroomClicks(e) {
+    const target = e.target;
+    
+    // 1. CREATE CLASS BUTTONS (in dashboard or classroom)
+    if (target.closest('#create-class-btn') || 
+        target.closest('[id*="create-class"][class*="btn"]') ||
+        target.closest('.teacher-only [onclick*="createClass"]')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        console.log('📝 Create Class button clicked');
+        createClassModal();
+        return;
     }
     
-    // Save class button in modal - FIXED THIS
-    document.addEventListener('click', function(e) {
-        if (e.target && (e.target.matches('#create-class-modal .btn-primary') || 
-                         e.target.closest('#create-class-modal .btn-primary'))) {
-            console.log('💾 Save class button clicked');
-            e.preventDefault();
-            e.stopPropagation();
-            saveClass();
+    // 2. SAVE CLASS BUTTON in modal
+    if (target.closest('#create-class-modal .btn-primary')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        console.log('💾 Save Class button clicked');
+        saveClass();
+        return;
+    }
+    
+    // 3. MODAL CLOSE BUTTONS
+    if (target.closest('.modal-close') || 
+        target.closest('[onclick*="closeModal"]') ||
+        target.closest('#create-class-modal .btn-secondary')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        const modal = target.closest('.modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            console.log('❌ Modal closed:', modal.id);
         }
-    });
+        return;
+    }
     
-    // Modal close buttons
-    document.querySelectorAll('.modal-close, .btn-secondary[onclick*="closeModal"]').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const modal = this.closest('.modal');
-            if (modal) {
-                console.log('❌ Closing modal:', modal.id);
-                closeModal(modal.id);
-            }
-        });
-    });
+    // 4. JOIN CLASS BUTTON
+    if (target.closest('#join-class-btn')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        
+        console.log('🎯 Join Class button clicked');
+        joinClass();
+        return;
+    }
 }
 
 // =====================
@@ -184,7 +215,7 @@ window.createClassModal = function() {
     }
 }
 
-// Create new class - FIXED: Now properly exposed
+// Create new class
 window.saveClass = async function() {
     console.log('💾 Starting saveClass function');
     
@@ -328,11 +359,18 @@ function displayAvailableClasses(classes) {
                 <i class="fas fa-chalkboard-teacher"></i>
                 <p>No classes available</p>
                 ${AppState.userRole === 'teacher' ? 
-                    '<button class="btn btn-primary" onclick="createClassModal()">Create Your First Class</button>' : 
+                    '<button class="btn btn-primary" id="empty-create-btn">Create Your First Class</button>' : 
                     '<p class="small">Check back later for upcoming classes</p>'
                 }
             </div>
         `;
+        
+        // Add listener to the empty state button
+        const emptyBtn = document.getElementById('empty-create-btn');
+        if (emptyBtn) {
+            emptyBtn.addEventListener('click', createClassModal);
+        }
+        
         return;
     }
     
@@ -359,19 +397,15 @@ function displayAvailableClasses(classes) {
                                 <i class="far fa-clock"></i>
                                 ${cls.duration_minutes || 60} minutes
                             </span>
-                            <span class="meta-item">
-                                <i class="fas fa-user-tie"></i>
-                                ${cls.teacher_id ? 'Teacher' : 'Unknown'}
-                            </span>
                         </div>
                     </div>
                     <div class="class-actions">
                         ${isUpcoming ? `
-                            <button class="btn btn-primary btn-sm" onclick="joinClass('${cls.id}')">
+                            <button class="btn btn-primary btn-sm join-class-btn" data-id="${cls.id}">
                                 <i class="fas fa-video"></i> Join
                             </button>
                         ` : ''}
-                        <button class="btn btn-secondary btn-sm" onclick="viewClassDetails('${cls.id}')">
+                        <button class="btn btn-secondary btn-sm view-details-btn" data-id="${cls.id}">
                             <i class="fas fa-info-circle"></i> Details
                         </button>
                     </div>
@@ -380,6 +414,21 @@ function displayAvailableClasses(classes) {
             }).join('')}
         </div>
     `;
+    
+    // Add event listeners to dynamically created buttons
+    document.querySelectorAll('.join-class-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const classId = this.getAttribute('data-id');
+            joinClass(classId);
+        });
+    });
+    
+    document.querySelectorAll('.view-details-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const classId = this.getAttribute('data-id');
+            viewClassDetails(classId);
+        });
+    });
 }
 
 // =====================
@@ -435,16 +484,6 @@ window.joinClass = async function(classId = null) {
             return;
         }
         
-        // Check if class has started
-        const classTime = new Date(classData.schedule);
-        const now = new Date();
-        const timeDiff = classTime - now;
-        
-        if (timeDiff > 30 * 60 * 1000) { // More than 30 minutes before start
-            showToast(`Class starts at ${formatDateTime(classData.schedule)}. Please join closer to the start time.`, 'info');
-            return;
-        }
-        
         // Set current class
         ClassroomState.currentClass = classData;
         ClassroomState.isInClass = true;
@@ -496,10 +535,6 @@ function showActiveClass() {
                         <i class="fas fa-hourglass-half"></i>
                         ${ClassroomState.currentClass.duration_minutes || 60} minutes
                     </span>
-                    <span class="class-code">
-                        <i class="fas fa-link"></i>
-                        ${ClassroomState.currentClass.meeting_url || 'No code'}
-                    </span>
                 </div>
             </div>
             
@@ -517,18 +552,18 @@ function showActiveClass() {
                             <span class="user-name">${userName} (You)</span>
                             <div class="video-controls">
                                 <button class="control-btn ${ClassroomState.isVideoEnabled ? 'active' : ''}" 
-                                        onclick="toggleVideo()" id="video-toggle" title="Toggle Video">
+                                        id="video-toggle" title="Toggle Video">
                                     <i class="fas ${ClassroomState.isVideoEnabled ? 'fa-video' : 'fa-video-slash'}"></i>
                                 </button>
                                 <button class="control-btn ${ClassroomState.isAudioEnabled ? 'active' : ''}" 
-                                        onclick="toggleAudio()" id="audio-toggle" title="Toggle Audio">
+                                        id="audio-toggle" title="Toggle Audio">
                                     <i class="fas ${ClassroomState.isAudioEnabled ? 'fa-microphone' : 'fa-microphone-slash'}"></i>
                                 </button>
-                                <button class="control-btn" onclick="toggleScreenShare()" id="screen-share-btn" title="Share Screen">
+                                <button class="control-btn" id="screen-share-btn" title="Share Screen">
                                     <i class="fas fa-desktop"></i>
                                 </button>
                                 <button class="control-btn ${ClassroomState.handRaised ? 'active' : ''}" 
-                                        onclick="raiseHand()" id="hand-raise-btn" title="Raise Hand">
+                                        id="hand-raise-btn" title="Raise Hand">
                                     <i class="fas fa-hand-paper"></i>
                                 </button>
                             </div>
@@ -565,9 +600,8 @@ function showActiveClass() {
                             </div>
                         </div>
                         <div class="chat-input">
-                            <input type="text" id="chat-input" placeholder="Type a message..." 
-                                   onkeypress="if(event.key === 'Enter') sendChatMessage()">
-                            <button class="btn btn-primary" onclick="sendChatMessage()" title="Send Message">
+                            <input type="text" id="chat-input" placeholder="Type a message...">
+                            <button class="btn btn-primary" id="send-chat-btn" title="Send Message">
                                 <i class="fas fa-paper-plane"></i>
                             </button>
                         </div>
@@ -576,39 +610,34 @@ function showActiveClass() {
             </div>
             
             <div class="class-actions">
-                <button class="btn btn-danger" onclick="leaveClass()">
+                <button class="btn btn-danger" id="leave-class-btn">
                     <i class="fas fa-sign-out-alt"></i> Leave Class
                 </button>
-                <button class="btn btn-secondary" onclick="showClassResources()">
+                <button class="btn btn-secondary" id="resources-btn">
                     <i class="fas fa-folder-open"></i> Resources
-                </button>
-                <button class="btn btn-outline" onclick="copyClassLink()">
-                    <i class="fas fa-copy"></i> Copy Link
                 </button>
             </div>
         </div>
     `;
     
-    // Setup chat input auto-focus
+    // Add event listeners to active class controls
+    document.getElementById('video-toggle')?.addEventListener('click', toggleVideo);
+    document.getElementById('audio-toggle')?.addEventListener('click', toggleAudio);
+    document.getElementById('screen-share-btn')?.addEventListener('click', toggleScreenShare);
+    document.getElementById('hand-raise-btn')?.addEventListener('click', raiseHand);
+    document.getElementById('send-chat-btn')?.addEventListener('click', sendChatMessage);
+    document.getElementById('leave-class-btn')?.addEventListener('click', leaveClass);
+    document.getElementById('resources-btn')?.addEventListener('click', showClassResources);
+    
+    // Chat input enter key
     const chatInput = document.getElementById('chat-input');
     if (chatInput) {
-        setTimeout(() => chatInput.focus(), 100);
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
     }
-}
-
-// Copy class link to clipboard
-function copyClassLink() {
-    if (!ClassroomState.currentClass?.meeting_url) {
-        showToast('No class link available', 'error');
-        return;
-    }
-    
-    const link = `${window.location.origin}/class/${ClassroomState.currentClass.meeting_url}`;
-    navigator.clipboard.writeText(link).then(() => {
-        showToast('Class link copied to clipboard!', 'success');
-    }).catch(() => {
-        showToast('Failed to copy link', 'error');
-    });
 }
 
 // Initialize media (camera & microphone)
