@@ -32,29 +32,85 @@ function initAssignments() {
     
     // Setup event listeners
     setupAssignmentsListeners();
+    
+    // Ensure create button exists
+    ensureCreateButton();
+}
+
+// Ensure create assignment button exists
+function ensureCreateButton() {
+    // Wait for DOM to be ready
+    setTimeout(() => {
+        let createBtn = document.getElementById('create-assignment-btn');
+        
+        if (!createBtn) {
+            console.log('Creating assignment button...');
+            
+            // Try to find where to add the button
+            const assignmentSection = document.getElementById('assignments-section');
+            const assignmentHeader = document.querySelector('#assignments-section .section-header') || 
+                                   document.querySelector('#assignments-section h3') ||
+                                   assignmentSection;
+            
+            if (assignmentHeader) {
+                createBtn = document.createElement('button');
+                createBtn.id = 'create-assignment-btn';
+                createBtn.className = 'btn btn-primary teacher-only';
+                createBtn.innerHTML = '<i class="fas fa-plus"></i> Create Assignment';
+                createBtn.style.margin = '10px';
+                
+                createBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    createAssignment();
+                });
+                
+                // Add to the end of the header or section
+                if (assignmentHeader.tagName === 'H3') {
+                    assignmentHeader.parentElement.appendChild(createBtn);
+                } else {
+                    assignmentHeader.appendChild(createBtn);
+                }
+                
+                console.log('✅ Create Assignment button added!');
+            }
+        }
+        
+        return createBtn;
+    }, 500); // Wait for page to load
 }
 
 // Setup assignments event listeners
 function setupAssignmentsListeners() {
-    // Setup filter buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const filter = this.dataset.filter || 'all';
-            filterAssignments(filter);
+    // Use setTimeout to ensure DOM is loaded
+    setTimeout(() => {
+        console.log('Setting up assignment listeners...');
+        
+        // Setup filter buttons
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const filter = this.dataset.filter || 'all';
+                filterAssignments(filter);
+            });
         });
-    });
-    
-    // Setup create assignment button (if exists)
-    const createBtn = document.getElementById('create-assignment-btn');
-    if (createBtn) {
-        createBtn.addEventListener('click', createAssignment);
-    }
-    
-    // Setup export grades button
-    const exportBtn = document.getElementById('export-grades-btn');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', exportGrades);
-    }
+        
+        // Setup create assignment button (if exists)
+        const createBtn = document.getElementById('create-assignment-btn');
+        if (createBtn) {
+            // Remove any existing listeners and add fresh one
+            createBtn.replaceWith(createBtn.cloneNode(true));
+            document.getElementById('create-assignment-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                console.log('Create assignment button clicked!');
+                createAssignment();
+            });
+        }
+        
+        // Setup export grades button
+        const exportBtn = document.getElementById('export-grades-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', exportGrades);
+        }
+    }, 300);
 }
 
 // =====================
@@ -114,9 +170,6 @@ async function loadTeacherAssignments() {
         
         if (error) throw error;
         
-        // If you need average grade, fetch it separately
-        // Or calculate it on the frontend
-        
         AssignmentsState.currentAssignments = data || [];
         renderTeacherAssignments();
         
@@ -157,7 +210,7 @@ async function loadStudentAssignments() {
                     id,
                     grade,
                     feedback,
-                    submission_date  // CHANGED: submitted_at → submission_date
+                    submission_date
                 )
             `)
             .in('course_id', courseIds)
@@ -334,12 +387,12 @@ function renderStudentAssignments(filter = 'all') {
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
-                return dueDate > now && !submission?.submission_date;  // CHANGED: submitted_at → submission_date
+                return dueDate > now && !submission?.submission_date;
             });
             break;
         case 'submitted':
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
-                a.submissions?.[0]?.submission_date  // CHANGED: submitted_at → submission_date
+                a.submissions?.[0]?.submission_date
             );
             break;
         case 'graded':
@@ -351,7 +404,7 @@ function renderStudentAssignments(filter = 'all') {
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
-                return dueDate < now && !submission?.submission_date;  // CHANGED: submitted_at → submission_date
+                return dueDate < now && !submission?.submission_date;
             });
             break;
     }
@@ -370,7 +423,7 @@ function renderStudentAssignments(filter = 'all') {
         const dueDate = new Date(assignment.due_date);
         const now = new Date();
         const submission = assignment.submissions?.[0];
-        const isSubmitted = !!submission?.submission_date;  // CHANGED: submitted_at → submission_date
+        const isSubmitted = !!submission?.submission_date;
         const isGraded = submission?.grade !== null;
         const isOverdue = dueDate < now && !isSubmitted;
         
@@ -464,6 +517,8 @@ function filterAssignments(filter) {
 
 // Create new assignment
 async function createAssignment() {
+    console.log('createAssignment function called');
+    
     if (AppState.userRole !== 'teacher') {
         showToast('Only teachers can create assignments', 'error');
         return;
@@ -621,6 +676,7 @@ async function saveNewAssignment() {
         showToast('Error creating assignment: ' + error.message, 'error');
     }
 }
+
 // Submit assignment
 async function submitAssignment(assignmentId) {
     try {
@@ -645,7 +701,7 @@ async function submitAssignment(assignmentId) {
                 assignment_id: assignmentId,
                 student_id: AppState.currentUser.id,
                 content: submissionContent.trim(),
-                submission_date: new Date().toISOString(),  // CHANGED: submitted_at → submission_date
+                submission_date: new Date().toISOString(),
                 status: 'submitted'
             }])
             .select()
@@ -684,7 +740,7 @@ async function gradeAssignment(assignmentId) {
                 student:user_profiles(full_name, email)
             `)
             .eq('assignment_id', assignmentId)
-            .order('submission_date', { ascending: true });  // CHANGED: submitted_at → submission_date
+            .order('submission_date', { ascending: true });
         
         if (subError) throw subError;
         
@@ -714,7 +770,7 @@ async function gradeAssignment(assignmentId) {
                                 <div class="submission-header">
                                     <h4>${sub.student?.full_name || sub.student?.email || 'Student'}</h4>
                                     <span class="submission-time">
-                                        Submitted: ${formatDateTime(sub.submission_date)}  <!-- CHANGED: submitted_at → submission_date -->
+                                        Submitted: ${formatDateTime(sub.submission_date)}
                                     </span>
                                 </div>
                                 <div class="submission-content">
@@ -835,7 +891,7 @@ async function loadStudentGrades() {
                 )
             `)
             .eq('student_id', AppState.currentUser.id)
-            .order('submission_date', { ascending: false });  // CHANGED: submitted_at → submission_date
+            .order('submission_date', { ascending: false });
         
         if (error) throw error;
         
@@ -1241,18 +1297,46 @@ async function viewFeedbackModal(submissionId) {
 
 // Modal helper functions
 function showModal(content) {
+    console.log('showModal called');
+    
     // Check if modal container exists
     let modalContainer = document.getElementById('modal-container');
     if (!modalContainer) {
         modalContainer = document.createElement('div');
         modalContainer.id = 'modal-container';
         modalContainer.className = 'modal-container';
+        modalContainer.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        `;
         document.body.appendChild(modalContainer);
     }
     
     // Create modal
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.style.cssText = `
+        background: white;
+        border-radius: 8px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        transform: translateY(-20px);
+        transition: transform 0.3s;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    `;
     modal.innerHTML = content;
     
     // Clear and add new modal
@@ -1261,26 +1345,29 @@ function showModal(content) {
     
     // Show with animation
     setTimeout(() => {
-        modal.classList.add('show');
+        modalContainer.style.opacity = '1';
+        modalContainer.style.visibility = 'visible';
+        modal.style.transform = 'translateY(0)';
         document.body.style.overflow = 'hidden';
     }, 10);
+    
+    console.log('Modal should be visible now');
 }
 
 function closeModal() {
-    const modal = document.querySelector('.modal');
-    if (modal) {
-        modal.classList.remove('show');
+    console.log('closeModal called');
+    const modalContainer = document.getElementById('modal-container');
+    if (modalContainer) {
+        modalContainer.style.opacity = '0';
+        modalContainer.style.visibility = 'hidden';
         setTimeout(() => {
-            const container = document.getElementById('modal-container');
-            if (container) {
-                container.innerHTML = '';
-            }
+            modalContainer.innerHTML = '';
             document.body.style.overflow = '';
         }, 300);
     }
 }
 
-// Format date time (needs to be defined or imported)
+// Format date time
 function formatDateTime(dateString) {
     if (!dateString) return 'Not scheduled';
     
@@ -1317,5 +1404,7 @@ window.gradeAssignment = gradeAssignment;
 window.filterAssignments = filterAssignments;
 window.exportGrades = exportGrades;
 window.viewFeedbackModal = viewFeedbackModal;
+window.showModal = showModal;
+window.closeModal = closeModal;
 
 console.log('✅ assignments.js loaded - Assignments module ready');
