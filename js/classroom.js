@@ -199,7 +199,7 @@ window.createClassModal = function() {
     }
 }
 
-// Create new class
+// Update the saveClass function in classroom.js
 window.saveClass = async function() {
     console.log('💾 Starting saveClass function');
     
@@ -234,15 +234,49 @@ window.saveClass = async function() {
     try {
         console.log('📊 Creating class in database...');
         
-        // Get teacher ID
-        const teacherId = AppState.currentUser?.id || 
-                         AppState.currentUser?.user?.id || 
-                         AppState.currentUser?.user_id;
+        // Get teacher ID - IMPORTANT: Use auth user ID, not profile ID
+        const teacherId = window.AppState?.currentUser?.id || 
+                         window.AppState?.currentUser?.user?.id;
+        
+        console.log('Teacher ID attempt:', teacherId);
         
         if (!teacherId) {
-            throw new Error('Cannot determine teacher ID');
+            showToast('Unable to identify teacher. Please login again.', 'error');
+            return;
         }
         
+        // First, check if user profile exists or create one if needed
+        const { data: profile, error: profileError } = await window.supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('id', teacherId)
+            .single();
+        
+        if (profileError && profileError.code !== 'PGRST116') {
+            console.log('Profile check error:', profileError);
+            // Profile doesn't exist, we need to create it
+            const { data: newProfile, error: createProfileError } = await window.supabase
+                .from('user_profiles')
+                .insert([{
+                    id: teacherId,
+                    email: window.AppState?.currentUser?.email,
+                    full_name: window.AppState?.currentUser?.user_metadata?.full_name || 'Teacher',
+                    role: 'teacher',
+                    created_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+            
+            if (createProfileError) {
+                console.error('❌ Error creating profile:', createProfileError);
+                showToast('Error setting up teacher profile', 'error');
+                return;
+            }
+            
+            console.log('✅ Created teacher profile:', newProfile);
+        }
+        
+        // Now create the class
         const { data, error } = await window.supabase
             .from('courses')
             .insert([{
@@ -262,7 +296,9 @@ window.saveClass = async function() {
             console.error('❌ Database error:', error);
             
             // Handle specific errors
-            if (error.code === '23505') {
+            if (error.code === '23503') {
+                showToast('Teacher profile issue. Please contact support.', 'error');
+            } else if (error.code === '23505') {
                 showToast('A class with similar details already exists', 'error');
             } else if (error.code === '42501') {
                 showToast('Permission denied. Check database permissions.', 'error');
@@ -301,7 +337,6 @@ window.saveClass = async function() {
         }
     }
 }
-
 // Generate meeting URL
 function generateMeetingUrl() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
