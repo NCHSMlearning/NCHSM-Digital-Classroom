@@ -1,7 +1,106 @@
 // Authentication Functions
+console.log('auth.js loading...');
+
+// Wait for Supabase to be ready
+let supabaseReady = false;
+
+function waitForSupabase() {
+    return new Promise((resolve) => {
+        const check = () => {
+            if (typeof window.supabase !== 'undefined' && window.supabase.auth) {
+                console.log('Supabase is ready');
+                supabaseReady = true;
+                resolve(window.supabase);
+            } else {
+                console.log('Waiting for Supabase...');
+                setTimeout(check, 100);
+            }
+        };
+        check();
+    });
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('auth.js DOM ready');
+    
+    // Wait for Supabase
+    const supabase = await waitForSupabase();
+    console.log('Supabase ready, setting up auth listener');
+    
+    // Setup auth listener
+    setupAuthListener(supabase);
+    
+    // Check current session
+    await checkCurrentSession(supabase);
+});
+
+// Setup auth state listener
+function setupAuthListener(supabaseClient) {
+    if (!supabaseClient || !supabaseClient.auth) {
+        console.error('Cannot setup auth listener: supabaseClient is invalid');
+        return;
+    }
+    
+    console.log('Setting up auth state change listener');
+    
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+        console.log('Auth state changed:', event);
+        
+        if (event === 'SIGNED_IN') {
+            console.log('User signed in:', session?.user?.email);
+            showMainApp();
+            loadUserData(session.user);
+        } else if (event === 'SIGNED_OUT') {
+            console.log('User signed out');
+            showLoginScreen();
+        } else if (event === 'INITIAL_SESSION') {
+            console.log('Initial session loaded');
+            if (session) {
+                showMainApp();
+                loadUserData(session.user);
+            } else {
+                showLoginScreen();
+            }
+        }
+    });
+}
+
+// Check current session
+async function checkCurrentSession(supabaseClient) {
+    try {
+        if (!supabaseClient || !supabaseClient.auth) {
+            console.log('Supabase auth not available');
+            showLoginScreen();
+            return;
+        }
+        
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+        
+        if (error) {
+            console.error('Session check error:', error);
+            showLoginScreen();
+            return;
+        }
+        
+        if (session) {
+            console.log('Found existing session for:', session.user.email);
+            showMainApp();
+            loadUserData(session.user);
+        } else {
+            console.log('No existing session');
+            showLoginScreen();
+        }
+    } catch (error) {
+        console.error('Error checking session:', error);
+        showLoginScreen();
+    }
+}
+
+// Login function
 async function login() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
+    const email = document.getElementById('login-email')?.value;
+    const password = document.getElementById('login-password')?.value;
     
     if (!email || !password) {
         showToast('Please enter email and password', 'error');
@@ -9,6 +108,13 @@ async function login() {
     }
     
     try {
+        // Get supabase client
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready. Please refresh page.', 'error');
+            return;
+        }
+        
         const { data, error } = await supabase.auth.signInWithPassword({
             email: email,
             password: password
@@ -18,12 +124,8 @@ async function login() {
         
         showToast('Login successful!', 'success');
         
-        // Redirect to main app
-        setTimeout(() => {
-            showMainApp();
-            loadUserData(data.user);
-            loadDashboardData();
-        }, 1000);
+        // User will be redirected via auth state change listener
+        console.log('Login successful for:', data.user.email);
         
     } catch (error) {
         console.error('Login error:', error);
@@ -32,10 +134,10 @@ async function login() {
 }
 
 async function register() {
-    const name = document.getElementById('register-name').value;
-    const email = document.getElementById('register-email').value;
-    const password = document.getElementById('register-password').value;
-    const role = document.getElementById('register-role').value;
+    const name = document.getElementById('register-name')?.value;
+    const email = document.getElementById('register-email')?.value;
+    const password = document.getElementById('register-password')?.value;
+    const role = document.getElementById('register-role')?.value;
     
     if (!name || !email || !password || !role) {
         showToast('Please fill all fields', 'error');
@@ -43,6 +145,12 @@ async function register() {
     }
     
     try {
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready. Please refresh page.', 'error');
+            return;
+        }
+        
         const { data, error } = await supabase.auth.signUp({
             email: email,
             password: password,
@@ -74,6 +182,12 @@ async function register() {
 
 async function logout() {
     try {
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready', 'error');
+            return;
+        }
+        
         const { error } = await supabase.auth.signOut();
         
         if (error) throw error;
@@ -82,11 +196,6 @@ async function logout() {
         
         // Clear any session data
         sessionStorage.clear();
-        
-        // Show login screen
-        setTimeout(() => {
-            showLoginScreen();
-        }, 1000);
         
     } catch (error) {
         console.error('Logout error:', error);
@@ -100,6 +209,12 @@ async function forgotPassword() {
     if (!email) return;
     
     try {
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready', 'error');
+            return;
+        }
+        
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
             redirectTo: `${window.location.origin}/reset-password.html`,
         });
@@ -126,7 +241,10 @@ function showAuthTab(tab) {
     });
     
     // Show selected form
-    document.getElementById(`${tab}-form`).classList.add('active');
+    const form = document.getElementById(`${tab}-form`);
+    if (form) {
+        form.classList.add('active');
+    }
     
     // Activate selected tab
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -136,36 +254,47 @@ function showAuthTab(tab) {
     });
 }
 
-// Listen for auth state changes
-supabase.auth.onAuthStateChange((event, session) => {
-    console.log('Auth state changed:', event);
-    
-    if (event === 'SIGNED_IN') {
-        console.log('User signed in:', session.user);
-    } else if (event === 'SIGNED_OUT') {
-        console.log('User signed out');
-    }
-});
-
 // Check if user has specific role
 async function checkUserRole(requiredRole) {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) return false;
-    
-    const userRole = user.user_metadata?.role || 'student';
-    return userRole === requiredRole;
+    try {
+        const supabase = window.supabase;
+        if (!supabase) return false;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) return false;
+        
+        const userRole = user.user_metadata?.role || 'student';
+        return userRole === requiredRole;
+    } catch (error) {
+        console.error('Error checking role:', error);
+        return false;
+    }
 }
 
 // Get current user info
 async function getCurrentUser() {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user;
+    try {
+        const supabase = window.supabase;
+        if (!supabase) return null;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        return user;
+    } catch (error) {
+        console.error('Error getting user:', error);
+        return null;
+    }
 }
 
 // Update user profile
 async function updateUserProfile(updates) {
     try {
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready', 'error');
+            return null;
+        }
+        
         const { data, error } = await supabase.auth.updateUser({
             data: updates
         });
@@ -185,6 +314,12 @@ async function updateUserProfile(updates) {
 // Change password
 async function changePassword(newPassword) {
     try {
+        const supabase = window.supabase;
+        if (!supabase) {
+            showToast('System not ready', 'error');
+            return false;
+        }
+        
         const { data, error } = await supabase.auth.updateUser({
             password: newPassword
         });
@@ -203,12 +338,73 @@ async function changePassword(newPassword) {
 
 // Check if user is authenticated
 async function isAuthenticated() {
-    const { data: { user } } = await supabase.auth.getUser();
-    return !!user;
+    try {
+        const supabase = window.supabase;
+        if (!supabase) return false;
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        return !!user;
+    } catch (error) {
+        console.error('Error checking auth:', error);
+        return false;
+    }
 }
 
 // Get user metadata
 async function getUserMetadata() {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.user_metadata || {};
+    try {
+        const supabase = window.supabase;
+        if (!supabase) return {};
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        return user?.user_metadata || {};
+    } catch (error) {
+        console.error('Error getting metadata:', error);
+        return {};
+    }
 }
+
+// Helper functions (should be in script.js, but added here for safety)
+function showToast(message, type = 'info') {
+    if (typeof Toastify === 'function') {
+        const colors = {
+            success: '#10b981',
+            error: '#ef4444',
+            warning: '#f59e0b',
+            info: '#3b82f6'
+        };
+        
+        Toastify({
+            text: message,
+            duration: 3000,
+            gravity: "top",
+            position: "right",
+            backgroundColor: colors[type] || colors.info,
+            stopOnFocus: true,
+        }).showToast();
+    } else {
+        console.log(`${type}: ${message}`);
+    }
+}
+
+function showLoginScreen() {
+    const loading = document.getElementById('loading-screen');
+    const auth = document.getElementById('auth-screens');
+    const main = document.getElementById('main-app');
+    
+    if (loading) loading.classList.add('hidden');
+    if (auth) auth.classList.remove('hidden');
+    if (main) main.classList.add('hidden');
+}
+
+function showMainApp() {
+    const loading = document.getElementById('loading-screen');
+    const auth = document.getElementById('auth-screens');
+    const main = document.getElementById('main-app');
+    
+    if (loading) loading.classList.add('hidden');
+    if (auth) auth.classList.add('hidden');
+    if (main) main.classList.remove('hidden');
+}
+
+console.log('auth.js loaded successfully');
