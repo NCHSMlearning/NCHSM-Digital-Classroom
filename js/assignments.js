@@ -157,7 +157,7 @@ async function loadStudentAssignments() {
                     id,
                     grade,
                     feedback,
-                    submitted_at
+                    submission_date  // CHANGED: submitted_at → submission_date
                 )
             `)
             .in('course_id', courseIds)
@@ -334,12 +334,12 @@ function renderStudentAssignments(filter = 'all') {
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
-                return dueDate > now && !submission?.submitted_at;
+                return dueDate > now && !submission?.submission_date;  // CHANGED: submitted_at → submission_date
             });
             break;
         case 'submitted':
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => 
-                a.submissions?.[0]?.submitted_at
+                a.submissions?.[0]?.submission_date  // CHANGED: submitted_at → submission_date
             );
             break;
         case 'graded':
@@ -351,7 +351,7 @@ function renderStudentAssignments(filter = 'all') {
             filteredAssignments = AssignmentsState.currentAssignments.filter(a => {
                 const dueDate = new Date(a.due_date);
                 const submission = a.submissions?.[0];
-                return dueDate < now && !submission?.submitted_at;
+                return dueDate < now && !submission?.submission_date;  // CHANGED: submitted_at → submission_date
             });
             break;
     }
@@ -370,7 +370,7 @@ function renderStudentAssignments(filter = 'all') {
         const dueDate = new Date(assignment.due_date);
         const now = new Date();
         const submission = assignment.submissions?.[0];
-        const isSubmitted = !!submission?.submitted_at;
+        const isSubmitted = !!submission?.submission_date;  // CHANGED: submitted_at → submission_date
         const isGraded = submission?.grade !== null;
         const isOverdue = dueDate < now && !isSubmitted;
         
@@ -622,7 +622,8 @@ async function submitAssignment(assignmentId) {
                 assignment_id: assignmentId,
                 student_id: AppState.currentUser.id,
                 content: submissionContent.trim(),
-                submitted_at: new Date().toISOString()
+                submission_date: new Date().toISOString(),  // CHANGED: submitted_at → submission_date
+                status: 'submitted'
             }])
             .select()
             .single();
@@ -660,7 +661,7 @@ async function gradeAssignment(assignmentId) {
                 student:user_profiles(full_name, email)
             `)
             .eq('assignment_id', assignmentId)
-            .order('submitted_at', { ascending: true });
+            .order('submission_date', { ascending: true });  // CHANGED: submitted_at → submission_date
         
         if (subError) throw subError;
         
@@ -690,7 +691,7 @@ async function gradeAssignment(assignmentId) {
                                 <div class="submission-header">
                                     <h4>${sub.student?.full_name || sub.student?.email || 'Student'}</h4>
                                     <span class="submission-time">
-                                        Submitted: ${formatDateTime(sub.submitted_at)}
+                                        Submitted: ${formatDateTime(sub.submission_date)}  <!-- CHANGED: submitted_at → submission_date -->
                                     </span>
                                 </div>
                                 <div class="submission-content">
@@ -811,7 +812,7 @@ async function loadStudentGrades() {
                 )
             `)
             .eq('student_id', AppState.currentUser.id)
-            .order('submitted_at', { ascending: false });
+            .order('submission_date', { ascending: false });  // CHANGED: submitted_at → submission_date
         
         if (error) throw error;
         
