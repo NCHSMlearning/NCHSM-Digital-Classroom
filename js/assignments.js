@@ -32,15 +32,38 @@ function initAssignments() {
     
     // Setup event listeners
     setupAssignmentsListeners();
+    
+    // Setup modal event listeners
+    setupModalListeners();
+}
+
+// Setup modal event listeners
+function setupModalListeners() {
+    // Close modal when clicking outside content
+    document.addEventListener('click', function(event) {
+        const modal = event.target.closest('.modal');
+        if (modal && event.target === modal) {
+            closeModal(modal.id);
+        }
+    });
+    
+    // Close modal with Escape key
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            const visibleModal = document.querySelector('.modal:not(.hidden)');
+            if (visibleModal) {
+                closeModal(visibleModal.id);
+            }
+        }
+    });
 }
 
 // Setup assignments event listeners
 function setupAssignmentsListeners() {
     console.log('Setting up assignment listeners...');
     
-    // Use event delegation for filter buttons (since they might be added dynamically)
+    // Use event delegation for filter buttons
     document.addEventListener('click', function(event) {
-        // Check if clicked element is a filter button or inside one
         const filterBtn = event.target.closest('.filter-btn');
         if (filterBtn) {
             const filter = filterBtn.dataset.filter || filterBtn.textContent.toLowerCase();
@@ -48,7 +71,7 @@ function setupAssignmentsListeners() {
         }
     });
     
-    // Setup create assignment button using event delegation
+    // Setup create assignment button
     document.addEventListener('click', function(event) {
         const createBtn = event.target.closest('[onclick*="createAssignment"], #create-assignment-btn');
         if (createBtn && AppState.userRole === 'teacher') {
@@ -539,14 +562,7 @@ async function createAssignment() {
         }
         
         // Show the modal
-        const modal = document.getElementById('create-assignment-modal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            console.log('Assignment modal shown!');
-        } else {
-            console.error('Assignment modal not found!');
-            showToast('Error opening assignment form', 'error');
-        }
+        showModal('create-assignment-modal');
         
     } catch (error) {
         console.error('Error loading classes for assignment:', error);
@@ -597,14 +613,14 @@ async function saveAssignment() {
         showToast('Assignment created successfully!', 'success');
         
         // Close the modal
-        const modal = document.getElementById('create-assignment-modal');
-        if (modal) {
-            modal.classList.add('hidden');
-        }
+        closeModal('create-assignment-modal');
         
         // Clear form
         document.getElementById('assignment-title').value = '';
         document.getElementById('assignment-description').value = '';
+        document.getElementById('assignment-due-date').value = '';
+        document.getElementById('assignment-points').value = '100';
+        if (classSelect) classSelect.value = '';
         
         // Reload assignments
         await loadAssignmentsSection();
@@ -687,12 +703,12 @@ async function gradeAssignment(assignmentId) {
             return;
         }
         
-        // Create grading modal dynamically
+        // Create grading modal content
         const modalContent = `
             <div class="modal-content wide-modal">
                 <div class="modal-header">
                     <h3>Grade Submissions: ${assignment.title}</h3>
-                    <button class="modal-close" onclick="closeGradingModal()">&times;</button>
+                    <button class="modal-close" onclick="closeModal('grading-modal')">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="grading-header">
@@ -740,47 +756,39 @@ async function gradeAssignment(assignmentId) {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeGradingModal()">Close</button>
+                    <button class="btn btn-secondary" onclick="closeModal('grading-modal')">Close</button>
                 </div>
             </div>
         `;
         
-        // Create modal container if it doesn't exist
-        let modalContainer = document.getElementById('grading-modal-container');
-        if (!modalContainer) {
-            modalContainer = document.createElement('div');
-            modalContainer.id = 'grading-modal-container';
-            modalContainer.className = 'modal-container';
-            modalContainer.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10000;
-            `;
-            document.body.appendChild(modalContainer);
-        }
-        
-        modalContainer.innerHTML = `
-            <div class="modal" style="background: white; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
-                ${modalContent}
-            </div>
-        `;
-        
-        // Add close function
-        window.closeGradingModal = function() {
-            modalContainer.remove();
-        };
+        // Create dynamic modal
+        createDynamicModal('grading-modal', modalContent);
+        showModal('grading-modal');
         
     } catch (error) {
         console.error('Error loading submissions for grading:', error);
         showToast('Error loading submissions', 'error');
     }
+}
+
+// Create dynamic modal
+function createDynamicModal(modalId, content) {
+    // Remove existing modal if it exists
+    const existingModal = document.getElementById(modalId);
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Create new modal
+    const modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'modal hidden';
+    modal.innerHTML = content;
+    
+    // Add to body
+    document.body.appendChild(modal);
+    
+    return modal;
 }
 
 // Save grade
@@ -1092,6 +1100,26 @@ function getLetterGrade(percentage) {
     return 'F';
 }
 
+// Show modal
+function showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('hidden');
+        console.log(`Modal ${modalId} shown`);
+    } else {
+        console.error(`Modal ${modalId} not found`);
+    }
+}
+
+// Close modal
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.add('hidden');
+        console.log(`Modal ${modalId} closed`);
+    }
+}
+
 // Export grades
 async function exportGrades() {
     try {
@@ -1229,12 +1257,12 @@ async function viewFeedbackModal(submissionId) {
         
         if (error) throw error;
         
-        // Create simple modal for feedback
+        // Create feedback modal
         const modalContent = `
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Feedback: ${submission.assignment?.title}</h3>
-                    <button class="modal-close" onclick="closeFeedbackModal()">&times;</button>
+                    <button class="modal-close" onclick="closeModal('feedback-modal')">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="feedback-display">
@@ -1254,42 +1282,14 @@ async function viewFeedbackModal(submissionId) {
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeFeedbackModal()">Close</button>
+                    <button class="btn btn-secondary" onclick="closeModal('feedback-modal')">Close</button>
                 </div>
             </div>
         `;
         
-        // Create modal container
-        let modalContainer = document.getElementById('feedback-modal-container');
-        if (!modalContainer) {
-            modalContainer = document.createElement('div');
-            modalContainer.id = 'feedback-modal-container';
-            modalContainer.className = 'modal-container';
-            modalContainer.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0, 0, 0, 0.5);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                z-index: 10000;
-            `;
-            document.body.appendChild(modalContainer);
-        }
-        
-        modalContainer.innerHTML = `
-            <div class="modal" style="background: white; border-radius: 8px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto;">
-                ${modalContent}
-            </div>
-        `;
-        
-        // Add close function
-        window.closeFeedbackModal = function() {
-            modalContainer.remove();
-        };
+        // Create dynamic modal
+        createDynamicModal('feedback-modal', modalContent);
+        showModal('feedback-modal');
         
     } catch (error) {
         console.error('Error loading feedback:', error);
@@ -1329,11 +1329,14 @@ window.initAssignments = initAssignments;
 window.loadAssignmentsSection = loadAssignmentsSection;
 window.loadGradesSection = loadGradesSection;
 window.createAssignment = createAssignment;
-window.saveAssignment = saveAssignment;  // Changed from saveNewAssignment
+window.saveAssignment = saveAssignment;
 window.submitAssignment = submitAssignment;
 window.gradeAssignment = gradeAssignment;
 window.filterAssignments = filterAssignments;
 window.exportGrades = exportGrades;
 window.viewFeedbackModal = viewFeedbackModal;
+window.showModal = showModal;
+window.closeModal = closeModal;
+window.createDynamicModal = createDynamicModal;
 
 console.log('✅ assignments.js loaded - Assignments module ready');
