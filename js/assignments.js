@@ -480,12 +480,6 @@ async function createAssignment() {
         
         if (error) throw error;
         
-        if (!classes || classes.length === 0) {
-            showToast('You need to create a class first', 'error');
-            showSection('classroom');
-            return;
-        }
-        
         // Create modal for assignment creation
         const modalContent = `
             <div class="modal-content">
@@ -521,12 +515,30 @@ async function createAssignment() {
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>Class *</label>
-                        <select id="assignment-class" class="form-control" required>
-                            <option value="">Select a class</option>
-                            ${classes.map(cls => `
+                        <label>Class (Optional)</label>
+                        <select id="assignment-class" class="form-control">
+                            <option value="">No specific class (General Assignment)</option>
+                            ${classes && classes.length > 0 ? classes.map(cls => `
                                 <option value="${cls.id}">${cls.name}</option>
-                            `).join('')}
+                            `).join('') : ''}
+                        </select>
+                        ${(!classes || classes.length === 0) ? `
+                            <div class="form-hint">
+                                <i class="fas fa-info-circle"></i>
+                                No classes created yet. This will be a general assignment.
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="form-group">
+                        <label>Assignment Type (Optional)</label>
+                        <select id="assignment-type" class="form-control">
+                            <option value="">Select type</option>
+                            <option value="homework">Homework</option>
+                            <option value="quiz">Quiz</option>
+                            <option value="test">Test</option>
+                            <option value="project">Project</option>
+                            <option value="essay">Essay</option>
+                            <option value="presentation">Presentation</option>
                         </select>
                     </div>
                 </div>
@@ -551,7 +563,7 @@ async function createAssignment() {
         
     } catch (error) {
         console.error('Error loading classes for assignment:', error);
-        showToast('Error loading classes', 'error');
+        showToast('Error loading assignment form', 'error');
     }
 }
 
@@ -562,25 +574,37 @@ async function saveNewAssignment() {
     const dueDate = document.getElementById('assignment-due-date')?.value;
     const points = document.getElementById('assignment-points')?.value;
     const classId = document.getElementById('assignment-class')?.value;
+    const assignmentType = document.getElementById('assignment-type')?.value;
     
     // Validation
-    if (!title || !dueDate || !points || !classId) {
+    if (!title || !dueDate || !points) {
         showToast('Please fill all required fields', 'error');
         return;
     }
     
     try {
+        const assignmentData = {
+            title: title.trim(),
+            description: description?.trim() || null,
+            due_date: dueDate,
+            max_points: parseInt(points),
+            created_by: AppState.currentUser.id,
+            created_at: new Date().toISOString()
+        };
+        
+        // Only add course_id if a class is selected
+        if (classId) {
+            assignmentData.course_id = classId;
+        }
+        
+        // Add assignment type if selected
+        if (assignmentType) {
+            assignmentData.assignment_type = assignmentType;
+        }
+        
         const { data, error } = await window.supabase
             .from('assignments')
-            .insert([{
-                title: title.trim(),
-                description: description?.trim() || null,
-                due_date: dueDate,
-                max_points: parseInt(points),
-                course_id: classId,
-                created_by: AppState.currentUser.id,
-                created_at: new Date().toISOString()
-            }])
+            .insert([assignmentData])
             .select()
             .single();
         
@@ -597,7 +621,6 @@ async function saveNewAssignment() {
         showToast('Error creating assignment: ' + error.message, 'error');
     }
 }
-
 // Submit assignment
 async function submitAssignment(assignmentId) {
     try {
