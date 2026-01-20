@@ -188,50 +188,64 @@ window.showAuthTab = function(tab) {
 // =====================
 
 // Handle post-login actions
+let isPostLoginProcessing = false;
+
 async function handlePostLogin(user) {
+    // Prevent multiple simultaneous calls
+    if (isPostLoginProcessing) {
+        console.log('⚠️ Post-login already processing, skipping...');
+        return;
+    }
+    
+    isPostLoginProcessing = true;
+    
     console.log('🔄 Handling post-login for:', user.email);
     
     try {
         // Set global user state
         if (typeof AppState !== 'undefined') {
+            // Don't re-set if already set
+            if (AppState.currentUser && AppState.currentUser.id === user.id) {
+                console.log('👤 User already in AppState, skipping...');
+                return;
+            }
             AppState.currentUser = user;
             AppState.userRole = user.user_metadata?.role || 'student';
         }
         
-        // Hide login section
-        const loginSection = document.getElementById('login-section');
-        if (loginSection) {
-            loginSection.style.display = 'none';
-        }
-        
-        // Show main app
-        const mainApp = document.getElementById('main-app');
-        if (mainApp) {
-            mainApp.style.display = 'block';
-        }
-        
-        // Update user info
-        updateUserInfoInUI(user);
-        
-        // Load dashboard content
-        await loadDashboardContent();
-        
-        // Show dashboard section
-        if (typeof showSection === 'function') {
-            showSection('dashboard');
+        // Call the main script's handleAuthenticatedUser
+        if (typeof handleAuthenticatedUser === 'function') {
+            await handleAuthenticatedUser(user);
         } else {
-            // Fallback: Direct DOM manipulation
-            document.querySelectorAll('.section').forEach(section => {
-                section.style.display = 'none';
-            });
-            const dashboard = document.getElementById('dashboard-section');
-            if (dashboard) dashboard.style.display = 'block';
+            // Fallback if function not available
+            console.warn('handleAuthenticatedUser not found, using fallback');
+            
+            // Hide login section
+            const loginSection = document.getElementById('login-section');
+            if (loginSection) {
+                loginSection.style.display = 'none';
+            }
+            
+            // Show main app
+            const mainApp = document.getElementById('main-app');
+            if (mainApp) {
+                mainApp.style.display = 'block';
+            }
+            
+            // Show dashboard
+            if (typeof showSection === 'function') {
+                showSection('dashboard');
+            }
         }
         
         console.log('✅ Post-login handling complete');
         
     } catch (error) {
         console.error('❌ Error in post-login handling:', error);
+    } finally {
+        setTimeout(() => {
+            isPostLoginProcessing = false;
+        }, 1000);
     }
 }
 
