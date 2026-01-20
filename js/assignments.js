@@ -107,16 +107,15 @@ async function loadTeacherAssignments() {
             .select(`
                 *,
                 courses(name),
-                submissions(count),
-                submissions_aggregate:submissions(aggregate: {
-                    count: true,
-                    avg: { grade: true }
-                })
+                submissions(count)
             `)
             .eq('created_by', AppState.currentUser.id)
             .order('created_at', { ascending: false });
         
         if (error) throw error;
+        
+        // If you need average grade, fetch it separately
+        // Or calculate it on the frontend
         
         AssignmentsState.currentAssignments = data || [];
         renderTeacherAssignments();
