@@ -872,7 +872,6 @@ function formatDateTime(dateString) {
 // MODULE EXPORTS
 // =====================
 
-// Export module functions
 window.initClassroom = initClassroom;
 window.createClassModal = createClassModal;
 window.joinClass = joinClass;
@@ -882,5 +881,7 @@ window.toggleAudio = toggleAudio;
 window.toggleScreenShare = toggleScreenShare;
 window.raiseHand = raiseHand;
 window.sendChatMessage = sendChatMessage;
+window.saveClass = saveClass; // Make sure this is included!
+window.closeModal = closeModal; // Make sure this is included!
 
 console.log('✅ classroom.js loaded - Classroom module ready');
