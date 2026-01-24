@@ -587,54 +587,61 @@ async function saveAssignment() {
     }
     
     try {
-        // Get current user's email from AppState or auth
-        const userEmail = AppState.currentUser?.email;
+        // Get the authenticated user's ID and email
+        const { data: { user }, error: authError } = await window.supabase.auth.getUser();
         
-        if (!userEmail) {
-            showToast('User email not found', 'error');
+        if (authError || !user) {
+            showToast('User not authenticated. Please sign in.', 'error');
             return;
         }
         
-        console.log('Looking for user profile with email:', userEmail);
+        const userEmail = user.email;
+        const userId = user.id; // This is the critical ID from auth.users
         
-        // Get the user's profile by email
+        console.log('Looking for user profile with email:', userEmail, 'and ID:', userId);
+        
+        let profileId;
+        
+        // Try to get user profile by ID (more reliable than email)
         const { data: userProfile, error: profileError } = await window.supabase
             .from('user_profiles')
             .select('id')
-            .eq('email', userEmail)
-            .single();
+            .eq('id', userId)  // Use ID instead of email
+            .maybeSingle();  // Use maybeSingle instead of single
         
         if (profileError) {
             console.error('Error fetching user profile:', profileError);
+            showToast('Error fetching user profile: ' + profileError.message, 'error');
+            return;
+        }
+        
+        if (!userProfile) {
+            // Profile doesn't exist, create it
+            showToast('Creating user profile...', 'info');
             
-            // If profile doesn't exist, create it
-            if (profileError.code === 'PGRST116') { // No rows returned
-                showToast('Creating user profile...', 'info');
-                
-                // Create user profile
-                const { data: newProfile, error: createError } = await window.supabase
-                    .from('user_profiles')
-                    .insert([{
-                        email: userEmail,
-                        full_name: userEmail.split('@')[0],
-                        role: AppState.userRole || 'teacher',
-                        created_at: new Date().toISOString()
-                    }])
-                    .select()
-                    .single();
-                
-                if (createError) {
-                    console.error('Error creating user profile:', createError);
-                    showToast('Error creating user profile: ' + createError.message, 'error');
-                    return;
-                }
-                
-                // Use the newly created profile
-                profileId = newProfile.id;
-                console.log('Created new profile with ID:', profileId);
-            } else {
-                throw profileError;
+            console.log('Creating profile with ID:', userId);
+            
+            // Create user profile WITH THE ID
+            const { data: newProfile, error: createError } = await window.supabase
+                .from('user_profiles')
+                .insert([{
+                    id: userId,  // CRITICAL: Include the auth user's ID
+                    email: userEmail,
+                    full_name: user.user_metadata?.full_name || userEmail.split('@')[0],
+                    role: AppState.userRole || 'teacher',
+                    created_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+            
+            if (createError) {
+                console.error('Error creating user profile:', createError);
+                showToast('Error creating user profile: ' + createError.message, 'error');
+                return;
             }
+            
+            profileId = newProfile.id;
+            console.log('Created new profile with ID:', profileId);
         } else {
             // Use existing profile
             profileId = userProfile.id;
@@ -643,6 +650,19 @@ async function saveAssignment() {
         
         if (!profileId) {
             showToast('Could not get user profile ID', 'error');
+            return;
+        }
+        
+        // Verify the profile exists before proceeding
+        const { data: verifyProfile, error: verifyError } = await window.supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('id', profileId)
+            .single();
+        
+        if (verifyError) {
+            console.error('Profile verification failed:', verifyError);
+            showToast('User profile verification failed', 'error');
             return;
         }
         
@@ -662,6 +682,7 @@ async function saveAssignment() {
         }
         
         console.log('Inserting assignment with created_by:', assignmentData.created_by);
+        console.log('Assignment data:', assignmentData);
         
         const { data, error } = await window.supabase
             .from('assignments')
@@ -671,17 +692,8 @@ async function saveAssignment() {
         
         if (error) {
             console.error('Supabase error:', error);
-            
-            // Additional debug: Check if profile ID exists
-            const { data: profileCheck } = await window.supabase
-                .from('user_profiles')
-                .select('id')
-                .eq('id', profileId)
-                .single();
-            
-            console.log('Profile check:', profileCheck);
-            
-            throw error;
+            showToast('Error creating assignment: ' + error.message, 'error');
+            return;
         }
         
         showToast('Assignment created successfully!', 'success');
