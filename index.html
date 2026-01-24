@@ -14,45 +14,50 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     
     <style>
-        /* Role-specific styles */
-.teacher-only { display: none; }
-.student-only { display: none; }
+    /* Role-specific styles */
+    .teacher-only { display: none; }
+    .student-only { display: none; }
 
-/* Show based on data-role attribute */
-body[data-role="lecturer"] .teacher-only { display: block !important; }
-body[data-role="student"] .student-only { display: block !important; }
-body[data-role="admin"] .teacher-only { display: block !important; }
-body[data-role="superadmin"] .teacher-only { display: block !important; }
+    /* Show based on data-role attribute */
+    body[data-role="lecturer"] .teacher-only,
+    body[data-role="admin"] .teacher-only,
+    body[data-role="superadmin"] .teacher-only {
+        display: block !important;
+    }
+    
+    body[data-role="student"] .student-only {
+        display: block !important;
+    }
 
-/* Role badges */
-.user-role {
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-}
+    /* Role badges */
+    .user-role {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+    }
 
-/* UPDATE THESE: Change teacher-badge to lecturer-badge */
-.lecturer-badge {
-    color: #4f46e5;
-    background-color: #e0e7ff;
-}
+    /* Role badge colors */
+    .lecturer-badge {
+        color: #4f46e5;
+        background-color: #e0e7ff;
+    }
 
-.student-badge {
-    color: #10b981;
-    background-color: #d1fae5;
-}
+    .student-badge {
+        color: #10b981;
+        background-color: #d1fae5;
+    }
 
-.admin-badge {
-    color: #ef4444;
-    background-color: #fee2e2;
-}
+    .admin-badge {
+        color: #ef4444;
+        background-color: #fee2e2;
+    }
 
-.superadmin-badge {
-    color: #8b5cf6;
-    background-color: #ede9fe;
-  }      
-    <style>
+    .superadmin-badge {
+        color: #8b5cf6;
+        background-color: #ede9fe;
+    }
+</style>
 </head>
 <body>
     <!-- Loading Screen -->
