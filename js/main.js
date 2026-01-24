@@ -35,9 +35,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 3. Check authentication
         await checkAuth();
         
-        // 4. Initialize modules after auth
-        initializeModules();
-        
         console.log('✅ EduMeet initialized successfully');
         
     } catch (error) {
@@ -123,7 +120,7 @@ function setupAuthListener() {
                 case 'USER_UPDATED':
                     console.log('👤 User updated');
                     if (session?.user) {
-                        updateUserState(session.user);
+                        await updateUserState(session.user);
                     }
                     break;
                     
@@ -150,8 +147,16 @@ async function handleAuthenticatedUser(user) {
     try {
         console.log('👤 Handling authenticated user:', user.email);
         
-        // Update application state
-        await updateUserState(user);
+        // Update application state (ONLY from consolidated table)
+        const authorized = await updateUserState(user);
+        
+        if (!authorized) {
+            // User not in consolidated table - already signed out
+            return;
+        }
+        
+        // Initialize modules after successful auth
+        initializeModules();
         
         // Show main application
         showMainApp();
@@ -167,7 +172,7 @@ async function handleAuthenticatedUser(user) {
             loadUserData();
         }, 300);
         
-        console.log('✅ User session established');
+        console.log('✅ User session established from consolidated table');
         
     } catch (error) {
         console.error('❌ Error handling authenticated user:', error);
@@ -199,34 +204,51 @@ function handleUserSignedOut() {
 async function updateUserState(user) {
     AppState.currentUser = user;
     
-    // Try to get role from consolidated_user_profiles_table
+    console.log('🔍 Looking for user ONLY in consolidated_user_profiles_table:', user.email);
+    
     try {
+        // ONLY check consolidated_user_profiles_table
         const { data: profile, error } = await window.supabase
             .from('consolidated_user_profiles_table')
-            .select('role, full_name')
-            .eq('id', user.id)
+            .select('role, full_name, id')
+            .eq('email', user.email)
             .single();
         
-        if (!error && profile) {
-            AppState.userRole = profile.role || 'student';
-            AppState.currentUser.full_name = profile.full_name || user.email;
-            console.log('✅ Profile found in consolidated_user_profiles_table:', profile);
-        } else {
-            // Fallback to user_metadata
-            AppState.userRole = user.user_metadata?.role || 'student';
-            AppState.currentUser.full_name = user.user_metadata?.full_name || user.email;
-            console.warn('⚠️ Profile not found in consolidated_user_profiles_table, using auth metadata');
+        if (error || !profile) {
+            // User NOT in consolidated table = CANNOT LOGIN
+            console.error('❌ User not found in consolidated_user_profiles_table:', user.email);
+            
+            // Sign them out immediately
+            await window.supabase.auth.signOut();
+            
+            showToast('Access denied: User profile not found in system', 'error');
+            showLoginScreen();
+            return false; // Stop further processing
         }
+        
+        // User IS in consolidated table - use their data
+        AppState.userRole = profile.role;
+        AppState.currentUser.full_name = profile.full_name;
+        AppState.currentUser.profile_id = profile.id;
+        
+        console.log(`✅ User authorized via consolidated table. Role: ${profile.role}`);
+        
+        // Store in localStorage
+        localStorage.setItem('userRole', AppState.userRole);
+        localStorage.setItem('userEmail', user.email);
+        localStorage.setItem('userName', AppState.currentUser.full_name);
+        
+        return true; // Success
+        
     } catch (error) {
-        console.warn('⚠️ Error fetching profile from consolidated_user_profiles_table:', error);
-        AppState.userRole = user.user_metadata?.role || 'student';
-        AppState.currentUser.full_name = user.user_metadata?.full_name || user.email;
+        console.error('❌ Error checking consolidated table:', error);
+        
+        // Sign them out on error
+        await window.supabase.auth.signOut();
+        showToast('System error: Cannot verify user profile', 'error');
+        showLoginScreen();
+        return false;
     }
-    
-    // Store in localStorage for persistence
-    localStorage.setItem('userRole', AppState.userRole);
-    
-    console.log(`👤 User role set to: ${AppState.userRole}`);
 }
 
 function resetAppState() {
@@ -240,6 +262,8 @@ function resetAppState() {
     
     // Clear localStorage
     localStorage.removeItem('userRole');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userName');
     document.body.removeAttribute('data-role');
 }
 
@@ -276,11 +300,8 @@ function updateWelcomeMessage() {
     
     if (!AppState.currentUser) return;
     
-    const userName = AppState.currentUser.full_name || 
-                    AppState.currentUser.email?.split('@')[0] || 
-                    'User';
-    
-    // Format role for display (your HTML uses teacher/student)
+    // Use ONLY consolidated table data
+    const userName = AppState.currentUser.full_name || 'User';
     const displayRole = AppState.userRole === 'lecturer' ? 'Teacher' : 
                        AppState.userRole.charAt(0).toUpperCase() + AppState.userRole.slice(1);
     
@@ -333,7 +354,7 @@ function updateQuickActions() {
     const quickActions = document.getElementById('quick-actions');
     if (!quickActions) return;
     
-    // Define quick actions by role (matching your HTML structure)
+    // Define quick actions by role
     const roleActions = {
         'superadmin': `
             <button class="quick-action-btn" onclick="showSection('classroom')">
