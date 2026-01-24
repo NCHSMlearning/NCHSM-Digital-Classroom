@@ -254,24 +254,42 @@ window.saveClass = async function() {
             return;
         }
         
-        // IMPORTANT: Check if user is a lecturer (from consolidated table)
+        // IMPORTANT FIX: Query by 'user_id' column instead of 'id'
         const { data: profile, error: profileError } = await window.supabase
             .from('consolidated_user_profiles_table')
             .select('role, full_name')
-            .eq('id', userId)
-            .single();
+            .eq('user_id', userId)  // FIXED: Changed from .eq('id', userId) to .eq('user_id', userId)
+            .maybeSingle();
         
-        if (profileError || !profile) {
+        if (profileError) {
             console.error('❌ Profile check error:', profileError);
+            
+            // Handle the specific "no rows" error
+            if (profileError.code === 'PGRST116' || profileError.message.includes('0 rows')) {
+                showToast('User profile not found in system. Contact administrator.', 'error');
+            } else {
+                showToast('Error checking user profile: ' + profileError.message, 'error');
+            }
+            return;
+        }
+        
+        if (!profile) {
+            console.error('❌ User profile not found for user_id:', userId);
             showToast('User profile not found. Contact administrator.', 'error');
             return;
         }
         
         // Only lecturers can create classes
-        if (profile.role !== 'lecturer' && profile.role !== 'admin' && profile.role !== 'superadmin') {
+        const isTeachingRole = profile.role === 'lecturer' || 
+                              profile.role === 'admin' || 
+                              profile.role === 'superadmin';
+        
+        if (!isTeachingRole) {
             showToast('Only lecturers and administrators can create classes', 'error');
             return;
         }
+        
+        console.log('✅ User authorized to create class. Role:', profile.role, 'Name:', profile.full_name);
         
         // Now create the class
         const classData = {
