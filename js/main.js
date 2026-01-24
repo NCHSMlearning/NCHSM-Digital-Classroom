@@ -293,6 +293,13 @@ function updateRoleBasedUI() {
     
     // Update teacher-only elements
     updateTeacherOnlyElements();
+    
+    // DEBUG: Check if everything is working
+    console.log('🔍 DEBUG ROLE CHECK:');
+    console.log('- Current role:', AppState.userRole);
+    console.log('- Body data-role:', document.body.getAttribute('data-role'));
+    console.log('- Teacher buttons found:', document.querySelectorAll('.teacher-only').length);
+    console.log('- First teacher button style:', document.querySelector('.teacher-only')?.style.display);
 }
 
 function updateWelcomeMessage() {
@@ -300,9 +307,11 @@ function updateWelcomeMessage() {
     
     if (!AppState.currentUser) return;
     
-    // Use ONLY consolidated table data
     const userName = AppState.currentUser.full_name || 'User';
-    const displayRole = AppState.userRole === 'lecturer' ? 'Teacher' : 
+    
+    // Format role for display
+    const displayRole = AppState.userRole === 'lecturer' ? 'Lecturer' : 
+                       AppState.userRole === 'superadmin' ? 'Super Admin' :
                        AppState.userRole.charAt(0).toUpperCase() + AppState.userRole.slice(1);
     
     // Update user name
@@ -446,26 +455,33 @@ function updateDashboardForRole() {
     // Update header text
     const headerTitle = sectionHeader.querySelector('h2');
     if (headerTitle) {
-        if (AppState.userRole === 'lecturer') {
-            headerTitle.textContent = 'Teacher Dashboard';
-        } else if (AppState.userRole === 'student') {
-            headerTitle.textContent = 'Student Dashboard';
-        } else if (AppState.userRole === 'admin' || AppState.userRole === 'superadmin') {
-            headerTitle.textContent = 'Admin Dashboard';
-        }
+        const roleTitles = {
+            'lecturer': 'Lecturer Dashboard',
+            'student': 'Student Dashboard',
+            'admin': 'Administrator Dashboard',
+            'superadmin': 'Super Admin Dashboard'
+        };
+        headerTitle.textContent = roleTitles[AppState.userRole] || 'Dashboard';
     }
 }
 
 function updateTeacherOnlyElements() {
     console.log('👨‍🏫 Updating teacher-only elements for role:', AppState.userRole);
     
-    // Show/hide teacher-only buttons
+    // Show/hide teacher-only buttons for lecturer/admin/superadmin
     const teacherButtons = document.querySelectorAll('.teacher-only');
     teacherButtons.forEach(btn => {
-        const isTeacher = AppState.userRole === 'lecturer' || 
-                         AppState.userRole === 'admin' || 
-                         AppState.userRole === 'superadmin';
-        btn.style.display = isTeacher ? 'inline-block' : 'none';
+        const isTeachingRole = AppState.userRole === 'lecturer' || 
+                              AppState.userRole === 'admin' || 
+                              AppState.userRole === 'superadmin';
+        btn.style.display = isTeachingRole ? 'inline-block' : 'none';
+        
+        // DEBUG: Force show for lecturer if still hidden
+        if (AppState.userRole === 'lecturer' && btn.style.display === 'none') {
+            console.warn('⚠️ Forcing teacher button to show for lecturer');
+            btn.style.display = 'inline-block';
+            btn.style.border = '2px solid red'; // Temporary visual indicator
+        }
     });
 }
 
@@ -503,6 +519,7 @@ function resetUI() {
     const teacherButtons = document.querySelectorAll('.teacher-only');
     teacherButtons.forEach(btn => {
         btn.style.display = 'none';
+        btn.style.border = ''; // Remove debug border
     });
     
     // Activate dashboard nav item
