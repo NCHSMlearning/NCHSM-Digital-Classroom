@@ -72,6 +72,7 @@ async function checkAuth() {
         
         if (session?.user) {
             console.log('✅ User already logged in:', session.user.email);
+            console.log('📝 Auth User ID:', session.user.id);
             await handleAuthenticatedUser(session.user);
         } else {
             console.log('👤 No active session');
@@ -146,6 +147,7 @@ async function handleAuthenticatedUser(user) {
     
     try {
         console.log('👤 Handling authenticated user:', user.email);
+        console.log('🔑 User ID from auth:', user.id);
         
         // Update application state (ONLY from consolidated table)
         const authorized = await updateUserState(user);
@@ -198,45 +200,74 @@ function handleUserSignedOut() {
 }
 
 // =====================
-// STATE MANAGEMENT
+// STATE MANAGEMENT - UPDATED FIX
 // =====================
 
 async function updateUserState(user) {
     AppState.currentUser = user;
     
-    console.log('🔍 Looking for user ONLY in consolidated_user_profiles_table:', user.email);
+    console.log('🔍 Looking for user in consolidated_user_profiles_table with user_id:', user.id);
     
     try {
-        // ONLY check consolidated_user_profiles_table
+        // FIXED: Query by user_id column instead of email or id
         const { data: profile, error } = await window.supabase
             .from('consolidated_user_profiles_table')
-            .select('role, full_name, id')
-            .eq('email', user.email)
-            .single();
+            .select('role, full_name, id, user_id, email')
+            .eq('user_id', user.id)  // CRITICAL FIX: Query by user_id column
+            .maybeSingle();  // Use maybeSingle to handle no rows gracefully
         
-        if (error || !profile) {
-            // User NOT in consolidated table = CANNOT LOGIN
-            console.error('❌ User not found in consolidated_user_profiles_table:', user.email);
+        console.log('🔍 Profile query result:', { profile, error });
+        
+        if (error) {
+            console.error('❌ Database query error:', error);
+            
+            // If it's a "no rows" error, handle specially
+            if (error.code === 'PGRST116' || error.message.includes('0 rows')) {
+                console.error('❌ User not found in consolidated_user_profiles_table with user_id:', user.id);
+                
+                // Sign them out immediately
+                await window.supabase.auth.signOut();
+                
+                showToast('Access denied: User profile not found in system', 'error');
+                showLoginScreen();
+                return false;
+            }
+            
+            throw error;
+        }
+        
+        if (!profile) {
+            // No profile found
+            console.error('❌ User not found in consolidated_user_profiles_table with user_id:', user.id);
             
             // Sign them out immediately
             await window.supabase.auth.signOut();
             
             showToast('Access denied: User profile not found in system', 'error');
             showLoginScreen();
-            return false; // Stop further processing
+            return false;
         }
         
         // User IS in consolidated table - use their data
         AppState.userRole = profile.role;
         AppState.currentUser.full_name = profile.full_name;
         AppState.currentUser.profile_id = profile.id;
+        AppState.currentUser.user_id = profile.user_id; // Store the user_id for reference
+        AppState.currentUser.profile_email = profile.email; // Store profile email
         
-        console.log(`✅ User authorized via consolidated table. Role: ${profile.role}`);
+        console.log(`✅ User authorized via consolidated table.`);
+        console.log(`   - Role: ${profile.role}`);
+        console.log(`   - Name: ${profile.full_name}`);
+        console.log(`   - Profile ID: ${profile.id}`);
+        console.log(`   - User ID (auth): ${profile.user_id}`);
+        console.log(`   - Email: ${profile.email}`);
         
         // Store in localStorage
         localStorage.setItem('userRole', AppState.userRole);
         localStorage.setItem('userEmail', user.email);
         localStorage.setItem('userName', AppState.currentUser.full_name);
+        localStorage.setItem('userUUID', profile.user_id);
+        localStorage.setItem('profileId', profile.id);
         
         return true; // Success
         
@@ -244,7 +275,12 @@ async function updateUserState(user) {
         console.error('❌ Error checking consolidated table:', error);
         
         // Sign them out on error
-        await window.supabase.auth.signOut();
+        try {
+            await window.supabase.auth.signOut();
+        } catch (signoutError) {
+            console.error('Signout error:', signoutError);
+        }
+        
         showToast('System error: Cannot verify user profile', 'error');
         showLoginScreen();
         return false;
@@ -264,6 +300,8 @@ function resetAppState() {
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userName');
+    localStorage.removeItem('userUUID');
+    localStorage.removeItem('profileId');
     document.body.removeAttribute('data-role');
 }
 
@@ -733,6 +771,7 @@ async function loadUserData() {
     if (!AppState.currentUser) return;
     
     console.log('👤 Loading user data for:', AppState.userRole);
+    console.log('🔑 Using user_id:', AppState.currentUser.user_id);
     
     try {
         // Load role-specific data
@@ -756,7 +795,7 @@ async function loadUserData() {
 }
 
 async function loadLecturerData() {
-    console.log('📚 Loading lecturer data');
+    console.log('📚 Loading lecturer data for user_id:', AppState.currentUser.user_id);
     
     try {
         // Load lecturer classes
@@ -775,7 +814,7 @@ async function loadLecturerData() {
 }
 
 async function loadStudentData() {
-    console.log('📖 Loading student data');
+    console.log('📖 Loading student data for user_id:', AppState.currentUser.user_id);
     
     try {
         // Load enrolled classes
@@ -836,7 +875,9 @@ window.showToast = function(message, type = 'info') {
             duration: 3000,
             gravity: "top",
             position: "right",
-            backgroundColor: colors[type] || colors.info,
+            style: {
+                background: colors[type] || colors.info,
+            },
             stopOnFocus: true,
         }).showToast();
     } else {
@@ -881,13 +922,13 @@ window.logout = logoutUser;
 
 if (typeof loadTeacherClasses === 'undefined') {
     window.loadTeacherClasses = async function() {
-        console.log('📚 Placeholder: Loading lecturer classes');
+        console.log('📚 Placeholder: Loading lecturer classes for user_id:', AppState.currentUser?.user_id);
     };
 }
 
 if (typeof loadEnrolledClasses === 'undefined') {
     window.loadEnrolledClasses = async function() {
-        console.log('📖 Placeholder: Loading enrolled classes');
+        console.log('📖 Placeholder: Loading enrolled classes for user_id:', AppState.currentUser?.user_id);
     };
 }
 
@@ -932,6 +973,22 @@ if (typeof sendAnnouncement === 'undefined') {
         showToast('Announcement functionality not implemented', 'warning');
     };
 }
+
+// =====================
+// GLOBAL HELPER FUNCTION FOR OTHER MODULES
+// =====================
+
+// This function should be used by other modules (classroom.js, assignments.js, etc.)
+// to get the correct user_id for queries
+window.getCurrentUserId = function() {
+    if (AppState.currentUser?.user_id) {
+        return AppState.currentUser.user_id;
+    }
+    
+    // Fallback to auth user ID
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id;
+};
 
 // =====================
 // INITIALIZATION COMPLETE
