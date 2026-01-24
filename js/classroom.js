@@ -243,23 +243,23 @@ window.saveClass = async function() {
         console.log('📊 Creating class in database...');
         
         // Get user ID - IMPORTANT: Use auth user ID
-        const userId = window.AppState?.currentUser?.id;
+        const authUserId = window.AppState?.currentUser?.id; // Renamed to authUserId for clarity
         const userEmail = window.AppState?.currentUser?.email;
         
-        console.log('User ID:', userId);
+        console.log('Auth User ID:', authUserId);
         console.log('User Email:', userEmail);
         
-        if (!userId) {
+        if (!authUserId) {
             showToast('Unable to identify user. Please login again.', 'error');
             return;
         }
         
-        // IMPORTANT FIX: Query by 'user_id' column instead of 'id'
+        // Get the FULL profile including the ID
         const { data: profile, error: profileError } = await window.supabase
             .from('consolidated_user_profiles_table')
-            .select('role, full_name')
-            .eq('user_id', userId)  // FIXED: Changed from .eq('id', userId) to .eq('user_id', userId)
-            .maybeSingle();
+            .select('id, role, full_name, user_id') // ← Added 'id' to SELECT
+            .eq('user_id', authUserId)
+            .single(); // Use single() since we expect exactly one match
         
         if (profileError) {
             console.error('❌ Profile check error:', profileError);
@@ -274,10 +274,14 @@ window.saveClass = async function() {
         }
         
         if (!profile) {
-            console.error('❌ User profile not found for user_id:', userId);
+            console.error('❌ User profile not found for user_id:', authUserId);
             showToast('User profile not found. Contact administrator.', 'error');
             return;
         }
+        
+        console.log('✅ Found profile:', profile);
+        console.log('📊 Profile ID (will use for created_by):', profile.id);
+        console.log('📊 Auth User ID:', profile.user_id);
         
         // Only lecturers can create classes
         const isTeachingRole = profile.role === 'lecturer' || 
@@ -291,11 +295,11 @@ window.saveClass = async function() {
         
         console.log('✅ User authorized to create class. Role:', profile.role, 'Name:', profile.full_name);
         
-        // Now create the class
+        // Now create the class - USE profile.id for created_by
         const classData = {
             course_name: className,
             description: description || null,
-            created_by: userId,
+            created_by: profile.id, // ← CRITICAL FIX: Use profile.id not authUserId
             schedule: schedule,
             duration_minutes: parseInt(duration) || 60,
             status: 'Active',
@@ -316,7 +320,8 @@ window.saveClass = async function() {
             
             // Handle specific errors
             if (error.code === '23503') {
-                showToast('User profile issue. Please contact support.', 'error');
+                console.error('Foreign key violation details:', error);
+                showToast('Database constraint error. Please check user profile exists.', 'error');
             } else if (error.code === '23505') {
                 showToast('A class with similar details already exists', 'error');
             } else if (error.code === '42501') {
