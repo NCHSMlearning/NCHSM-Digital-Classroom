@@ -15,36 +15,44 @@
     
     <style>
         /* Role-specific styles */
-        .teacher-only { display: none; }
-        .student-only { display: none; }
-        
-        /* Show based on data-role attribute */
-        body[data-role="teacher"] .teacher-only { display: block !important; }
-        body[data-role="student"] .student-only { display: block !important; }
-        
-        /* Role badges */
-        .user-role {
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .teacher-badge {
-            color: #4f46e5;
-            background-color: #e0e7ff;
-        }
-        
-        .student-badge {
-            color: #10b981;
-            background-color: #d1fae5;
-        }
-        
-        .admin-badge {
-            color: #ef4444;
-            background-color: #fee2e2;
-        }
-    </style>
+.teacher-only { display: none; }
+.student-only { display: none; }
+
+/* Show based on data-role attribute */
+body[data-role="lecturer"] .teacher-only { display: block !important; }
+body[data-role="student"] .student-only { display: block !important; }
+body[data-role="admin"] .teacher-only { display: block !important; }
+body[data-role="superadmin"] .teacher-only { display: block !important; }
+
+/* Role badges */
+.user-role {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* UPDATE THESE: Change teacher-badge to lecturer-badge */
+.lecturer-badge {
+    color: #4f46e5;
+    background-color: #e0e7ff;
+}
+
+.student-badge {
+    color: #10b981;
+    background-color: #d1fae5;
+}
+
+.admin-badge {
+    color: #ef4444;
+    background-color: #fee2e2;
+}
+
+.superadmin-badge {
+    color: #8b5cf6;
+    background-color: #ede9fe;
+  }      
+    <style>
 </head>
 <body>
     <!-- Loading Screen -->
@@ -556,11 +564,27 @@
     <script src="js/classroom.js"></script>
     <script src="js/main.js"></script>
     
-    <script>
+   <script>
     // Global function to update role-based UI
     window.updateRoleBasedUI = function() {
-        // This is now handled by main.js
-        console.log('updateRoleBasedUI called from inline script');
+        const role = window.AppState?.userRole || 'student';
+        
+        // Update body data-role attribute
+        document.body.setAttribute('data-role', role);
+        
+        // Update role badge
+        const roleElements = document.querySelectorAll('.user-role');
+        roleElements.forEach(el => {
+            // Display role name
+            const displayName = role === 'lecturer' ? 'Lecturer' :
+                               role === 'superadmin' ? 'Super Admin' :
+                               role.charAt(0).toUpperCase() + role.slice(1);
+            el.textContent = displayName;
+            
+            // Add correct badge class
+            el.className = 'user-role';
+            el.classList.add(`${role}-badge`);
+        });
     };
 </script>
 </body>
