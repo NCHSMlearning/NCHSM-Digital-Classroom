@@ -980,14 +980,23 @@ if (typeof sendAnnouncement === 'undefined') {
 
 // This function should be used by other modules (classroom.js, assignments.js, etc.)
 // to get the correct user_id for queries
-window.getCurrentUserId = function() {
+window.getCurrentUserId = async function() {  // ADD 'async' here
     if (AppState.currentUser?.user_id) {
         return AppState.currentUser.user_id;
     }
     
     // Fallback to auth user ID
-    const { data: { user } } = await supabase.auth.getUser();
-    return user?.id;
+    try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error) {
+            console.error('Error getting user:', error);
+            return null;
+        }
+        return user?.id;
+    } catch (error) {
+        console.error('Error getting user ID:', error);
+        return null;
+    }
 };
 
 // =====================
