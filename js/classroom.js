@@ -128,10 +128,13 @@ function updateClassroomUI() {
     
     console.log('🔄 Updating classroom UI for role:', AppState.userRole);
     
-    // Show create class button only for teachers
+    // Show create class button only for teaching roles
     if (createClassBtn) {
-        createClassBtn.style.display = AppState.userRole === 'teacher' ? 'block' : 'none';
-        console.log('👨‍🏫 Create class button display:', createClassBtn.style.display);
+        const isTeachingRole = AppState.userRole === 'lecturer' || 
+                              AppState.userRole === 'admin' || 
+                              AppState.userRole === 'superadmin';
+        createClassBtn.style.display = isTeachingRole ? 'block' : 'none';
+        console.log('👨‍🏫 Create class button display:', createClassBtn.style.display, 'for role:', AppState.userRole);
     }
     
     // Update join class button text
@@ -156,8 +159,13 @@ function updateClassroomUI() {
 window.createClassModal = function() {
     console.log('📋 Opening create class modal');
     
-    if (AppState.userRole !== 'teacher') {
-        showToast('Only teachers can create classes', 'error');
+    // Check if user can create classes (lecturer, admin, superadmin)
+    const canCreate = AppState.userRole === 'lecturer' || 
+                     AppState.userRole === 'admin' || 
+                     AppState.userRole === 'superadmin';
+    
+    if (!canCreate) {
+        showToast('Only lecturers and administrators can create classes', 'error');
         return;
     }
     
@@ -234,61 +242,54 @@ window.saveClass = async function() {
     try {
         console.log('📊 Creating class in database...');
         
-        // Get teacher ID - IMPORTANT: Use auth user ID, not profile ID
-        const teacherId = window.AppState?.currentUser?.id || 
-                         window.AppState?.currentUser?.user?.id;
+        // Get user ID - IMPORTANT: Use auth user ID
+        const userId = window.AppState?.currentUser?.id;
+        const userEmail = window.AppState?.currentUser?.email;
         
-        console.log('Teacher ID attempt:', teacherId);
+        console.log('User ID:', userId);
+        console.log('User Email:', userEmail);
         
-        if (!teacherId) {
-            showToast('Unable to identify teacher. Please login again.', 'error');
+        if (!userId) {
+            showToast('Unable to identify user. Please login again.', 'error');
             return;
         }
         
-        // First, check if user profile exists or create one if needed
+        // IMPORTANT: Check if user is a lecturer (from consolidated table)
         const { data: profile, error: profileError } = await window.supabase
-            .from('user_profiles')
-            .select('id')
-            .eq('id', teacherId)
+            .from('consolidated_user_profiles_table')
+            .select('role, full_name')
+            .eq('id', userId)
             .single();
         
-        if (profileError && profileError.code !== 'PGRST116') {
-            console.log('Profile check error:', profileError);
-            // Profile doesn't exist, we need to create it
-            const { data: newProfile, error: createProfileError } = await window.supabase
-                .from('user_profiles')
-                .insert([{
-                    id: teacherId,
-                    email: window.AppState?.currentUser?.email,
-                    full_name: window.AppState?.currentUser?.user_metadata?.full_name || 'Teacher',
-                    role: 'teacher',
-                    created_at: new Date().toISOString()
-                }])
-                .select()
-                .single();
-            
-            if (createProfileError) {
-                console.error('❌ Error creating profile:', createProfileError);
-                showToast('Error setting up teacher profile', 'error');
-                return;
-            }
-            
-            console.log('✅ Created teacher profile:', newProfile);
+        if (profileError || !profile) {
+            console.error('❌ Profile check error:', profileError);
+            showToast('User profile not found. Contact administrator.', 'error');
+            return;
+        }
+        
+        // Only lecturers can create classes
+        if (profile.role !== 'lecturer' && profile.role !== 'admin' && profile.role !== 'superadmin') {
+            showToast('Only lecturers and administrators can create classes', 'error');
+            return;
         }
         
         // Now create the class
+        const classData = {
+            course_name: className,
+            description: description || null,
+            created_by: userId,
+            schedule: schedule,
+            duration_minutes: parseInt(duration) || 60,
+            status: 'Active',
+            color: '#4f46e5',
+            created_at: new Date().toISOString()
+        };
+        
+        console.log('📤 Inserting class data:', classData);
+        
         const { data, error } = await window.supabase
             .from('courses')
-            .insert([{
-                name: className,
-                description: description || null,
-                teacher_id: teacherId,
-                schedule: schedule,
-                duration_minutes: parseInt(duration) || 60,
-                is_active: true,
-                meeting_url: generateMeetingUrl(),
-                created_at: new Date().toISOString()
-            }])
+            .insert([classData])
             .select()
             .single();
         
@@ -297,7 +298,7 @@ window.saveClass = async function() {
             
             // Handle specific errors
             if (error.code === '23503') {
-                showToast('Teacher profile issue. Please contact support.', 'error');
+                showToast('User profile issue. Please contact support.', 'error');
             } else if (error.code === '23505') {
                 showToast('A class with similar details already exists', 'error');
             } else if (error.code === '42501') {
@@ -336,7 +337,8 @@ window.saveClass = async function() {
             showToast('Failed to create class. Please try again.', 'error');
         }
     }
-}
+};
+
 // Generate meeting URL
 function generateMeetingUrl() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -354,14 +356,18 @@ async function loadAvailableClasses() {
     try {
         let query;
         
-        if (AppState.userRole === 'teacher') {
-            console.log('👨‍🏫 Loading teacher classes for:', AppState.currentUser?.id);
-            // Teachers see their own classes
+        const isTeachingRole = AppState.userRole === 'lecturer' || 
+                              AppState.userRole === 'admin' || 
+                              AppState.userRole === 'superadmin';
+        
+        if (isTeachingRole) {
+            console.log('👨‍🏫 Loading lecturer classes for:', AppState.currentUser?.id);
+            // Lecturers see their own classes
             query = window.supabase
                 .from('courses')
                 .select('*')
-                .eq('teacher_id', AppState.currentUser?.id || AppState.currentUser?.user?.id)
-                .eq('is_active', true)
+                .eq('created_by', AppState.currentUser?.id)
+                .eq('status', 'Active')
                 .order('schedule', { ascending: true });
         } else {
             console.log('👨‍🎓 Loading student classes');
@@ -371,7 +377,7 @@ async function loadAvailableClasses() {
                 .from('courses')
                 .select('*')
                 .gte('schedule', now)
-                .eq('is_active', true)
+                .eq('status', 'Active')
                 .order('schedule', { ascending: true });
         }
         
@@ -406,7 +412,7 @@ function displayAvailableClasses(classes) {
             <div class="empty-state">
                 <i class="fas fa-chalkboard-teacher"></i>
                 <p>No classes available</p>
-                ${AppState.userRole === 'teacher' ? 
+                ${(AppState.userRole === 'lecturer' || AppState.userRole === 'admin' || AppState.userRole === 'superadmin') ? 
                     '<button class="btn btn-primary" id="empty-create-btn">Create Your First Class</button>' : 
                     '<p class="small">Check back later for upcoming classes</p>'
                 }
@@ -429,7 +435,7 @@ function displayAvailableClasses(classes) {
                 return `
                 <div class="class-card" data-id="${cls.id}">
                     <div class="class-header">
-                        <h4>${cls.name}</h4>
+                        <h4>${cls.course_name || cls.name}</h4>
                         <span class="class-status ${isUpcoming ? 'upcoming' : 'completed'}">
                             ${isUpcoming ? 'Upcoming' : 'Completed'}
                         </span>
@@ -513,7 +519,7 @@ window.joinClass = async function(classId = null) {
                 .from('courses')
                 .select('*')
                 .gte('schedule', now)
-                .eq('is_active', true)
+                .eq('status', 'Active')
                 .order('schedule', { ascending: true })
                 .limit(1)
                 .single();
@@ -527,7 +533,7 @@ window.joinClass = async function(classId = null) {
         }
         
         // Check if class is active
-        if (!classData.is_active) {
+        if (classData.status !== 'Active') {
             showToast('This class is no longer active', 'error');
             return;
         }
@@ -536,7 +542,7 @@ window.joinClass = async function(classId = null) {
         ClassroomState.currentClass = classData;
         ClassroomState.isInClass = true;
         
-        console.log('✅ Joined class:', classData.name);
+        console.log('✅ Joined class:', classData.course_name || classData.name);
         
         // Update UI
         updateClassroomUI();
@@ -548,7 +554,7 @@ window.joinClass = async function(classId = null) {
         // Connect to class
         connectToClass();
         
-        showToast(`Joined class: ${classData.name}`, 'success');
+        showToast(`Joined class: ${classData.course_name || classData.name}`, 'success');
         
     } catch (error) {
         console.error('❌ Error joining class:', error);
@@ -566,14 +572,14 @@ function showActiveClass() {
     
     console.log('🎬 Showing active class interface');
     
-    const userName = AppState.currentUser?.user_metadata?.full_name || 
+    const userName = AppState.currentUser?.full_name || 
                     AppState.currentUser?.email?.split('@')[0] || 
                     'You';
     
     classroomContainer.innerHTML = `
         <div class="active-class">
             <div class="class-header">
-                <h3><i class="fas fa-chalkboard-teacher"></i> ${ClassroomState.currentClass.name}</h3>
+                <h3><i class="fas fa-chalkboard-teacher"></i> ${ClassroomState.currentClass.course_name || ClassroomState.currentClass.name}</h3>
                 <div class="class-info">
                     <span class="class-time">
                         <i class="far fa-clock"></i>
@@ -644,7 +650,7 @@ function showActiveClass() {
                         <div class="chat-messages" id="chat-messages">
                             <div class="welcome-message system-message">
                                 <i class="fas fa-bullhorn"></i>
-                                Welcome to ${ClassroomState.currentClass.name}! Class started at ${new Date().toLocaleTimeString()}.
+                                Welcome to ${ClassroomState.currentClass.course_name || ClassroomState.currentClass.name}! Class started at ${new Date().toLocaleTimeString()}.
                             </div>
                         </div>
                         <div class="chat-input">
@@ -732,7 +738,7 @@ window.sendChatMessage = function() {
         return;
     }
     
-    const userName = AppState.currentUser?.user_metadata?.full_name || 
+    const userName = AppState.currentUser?.full_name || 
                     AppState.currentUser?.email?.split('@')[0] || 
                     'You';
     
@@ -769,7 +775,7 @@ function addChatMessage(sender, message, isSent) {
 
 function simulateChatResponse() {
     const responses = [
-        { sender: 'Teacher', message: 'Great question!' },
+        { sender: 'Lecturer', message: 'Great question!' },
         { sender: 'Student', message: 'I agree!' }
     ];
     
@@ -810,22 +816,22 @@ function connectToClass() {
     
     // Simulate adding participants
     setTimeout(() => {
-        addParticipant('teacher-1', 'Teacher', true);
+        addParticipant('lecturer-1', 'Lecturer', true);
         addParticipant('student-1', 'Alex Johnson', false);
     }, 1500);
 }
 
-function addParticipant(id, name, isTeacher) {
+function addParticipant(id, name, isLecturer) {
     const participantsList = document.getElementById('participants-list');
     if (!participantsList) return;
     
     const participantItem = document.createElement('div');
-    participantItem.className = `participant-item ${isTeacher ? 'host' : ''}`;
+    participantItem.className = `participant-item ${isLecturer ? 'host' : ''}`;
     participantItem.innerHTML = `
         <div class="participant-avatar">${name.charAt(0)}</div>
         <div class="participant-info">
             <div class="participant-name">${name}</div>
-            <div class="participant-role">${isTeacher ? 'Teacher' : 'Student'}</div>
+            <div class="participant-role">${isLecturer ? 'Lecturer' : 'Student'}</div>
         </div>
         <div class="participant-status">
             <i class="fas fa-microphone"></i>
