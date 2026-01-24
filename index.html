@@ -557,71 +557,11 @@
     <script src="js/main.js"></script>
     
     <script>
-        // Global function to update role-based UI
-        window.updateRoleBasedUI = function() {
-            const role = window.AppState?.userRole || 'student';
-            
-            // Update body data-role attribute
-            document.body.setAttribute('data-role', role);
-            
-            // Update role badge
-            const roleElements = document.querySelectorAll('.user-role');
-            roleElements.forEach(el => {
-                el.textContent = role.charAt(0).toUpperCase() + role.slice(1);
-                el.className = 'user-role';
-                el.classList.add(`${role}-badge`);
-            });
-            
-            // Update quick actions based on role
-            updateQuickActions();
-        };
-        
-        function updateQuickActions() {
-            const quickActions = document.getElementById('quick-actions');
-            if (!quickActions) return;
-            
-            const role = window.AppState?.userRole || 'student';
-            
-            if (role === 'teacher') {
-                quickActions.innerHTML = `
-                    <button class="quick-action-btn" onclick="showSection('classroom')">
-                        <i class="fas fa-video"></i>
-                        <span>Start Class</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="createAssignmentModal()">
-                        <i class="fas fa-plus"></i>
-                        <span>New Assignment</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="sendAnnouncement()">
-                        <i class="fas fa-bullhorn"></i>
-                        <span>Send Announcement</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showSection('grades')">
-                        <i class="fas fa-chart-bar"></i>
-                        <span>View Grades</span>
-                    </button>
-                `;
-            } else {
-                quickActions.innerHTML = `
-                    <button class="quick-action-btn" onclick="showSection('classroom')">
-                        <i class="fas fa-video"></i>
-                        <span>Join Class</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showSection('assignments')">
-                        <i class="fas fa-tasks"></i>
-                        <span>View Assignments</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showSection('grades')">
-                        <i class="fas fa-chart-bar"></i>
-                        <span>My Grades</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showSection('resources')">
-                        <i class="fas fa-folder-open"></i>
-                        <span>Study Materials</span>
-                    </button>
-                `;
-            }
-        }
-    </script>
+    // Global function to update role-based UI
+    window.updateRoleBasedUI = function() {
+        // This is now handled by main.js
+        console.log('updateRoleBasedUI called from inline script');
+    };
+</script>
 </body>
 </html>
