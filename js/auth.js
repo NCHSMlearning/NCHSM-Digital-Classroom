@@ -24,6 +24,7 @@ window.login = async function() {
             throw new Error('Authentication service not available');
         }
         
+        // 1. Login with Supabase Auth
         const { data, error } = await window.supabase.auth.signInWithPassword({
             email: email,
             password: password
@@ -36,10 +37,80 @@ window.login = async function() {
             return;
         }
         
-        console.log('✅ Login successful:', data.user.email);
-        showToast('Login successful! Redirecting...', 'success');
+        console.log('✅ Auth login successful:', data.user.email);
+        showToast('Login successful!', 'success');
+        
+        // 2. Check if user exists in consolidated_user_profiles_table
+        const { data: profile, error: profileError } = await window.supabase
+            .from('consolidated_user_profiles_table')
+            .select('*')
+            .eq('email', email)
+            .single();
+        
+        if (profileError && profileError.code !== 'PGRST116') {
+            // Error other than "no rows returned"
+            console.error('❌ Profile check error:', profileError);
+        }
+        
+        let profileId;
+        
+        if (profileError || !profile) {
+            console.warn('⚠️ User not found in consolidated_user_profiles_table:', email);
+            console.warn('Creating profile from auth data...');
+            
+            // Create profile from auth data
+            const profileData = {
+                id: data.user.id,
+                email: data.user.email,
+                full_name: data.user.user_metadata?.full_name || email.split('@')[0],
+                role: data.user.user_metadata?.role || 'student',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            };
+            
+            console.log('📤 Creating profile:', profileData);
+            
+            const { data: newProfile, error: createError } = await window.supabase
+                .from('consolidated_user_profiles_table')
+                .insert([profileData])
+                .select()
+                .single();
+            
+            if (createError) {
+                console.error('❌ Failed to create profile:', createError);
+                // Continue anyway - use auth user ID
+                profileId = data.user.id;
+            } else {
+                console.log('✅ Profile created:', newProfile);
+                profileId = newProfile.id;
+            }
+        } else {
+            console.log('✅ Profile found:', profile);
+            profileId = profile.id;
+        }
+        
+        // 3. Update AppState with user info
+        if (window.AppState) {
+            window.AppState.currentUser = {
+                id: profileId || data.user.id,
+                email: data.user.email,
+                full_name: data.user.user_metadata?.full_name || email.split('@')[0],
+                role: data.user.user_metadata?.role || 'student'
+            };
+            window.AppState.userRole = window.AppState.currentUser.role;
+            console.log('📊 AppState updated:', window.AppState.currentUser);
+        }
+        
+        // 4. Hide loading and show main app
+        hideLoading();
         
         // The auth state listener will handle the redirect
+        // But trigger it manually after a short delay
+        setTimeout(() => {
+            if (window.supabase?.auth?.getSession) {
+                window.supabase.auth.getSession();
+            }
+        }, 500);
         
     } catch (error) {
         console.error('❌ Login error:', error);
@@ -48,7 +119,12 @@ window.login = async function() {
     }
 };
 
+// Remove registration if not needed, or keep it for reference
 window.register = async function() {
+    showToast('Registration is currently disabled. Please use existing credentials.', 'info');
+    return;
+    
+    /* Keep this commented out as reference
     console.log('📝 ======= REGISTRATION STARTED =======');
     
     const name = document.getElementById('register-name')?.value.trim();
@@ -101,7 +177,7 @@ window.register = async function() {
             email: authData.user?.email
         });
         
-        // 2. Create user profile (CRITICAL MISSING PART!)
+        // 2. Create user profile
         if (authData.user) {
             console.log('👤 Step 2: Creating user profile...');
             
@@ -118,29 +194,18 @@ window.register = async function() {
                 console.log('📤 Inserting profile:', profileData);
                 
                 const { data: profileResult, error: profileError } = await window.supabase
-                    .from('user_profiles')
+                    .from('consolidated_user_profiles_table')
                     .insert([profileData])
                     .select()
                     .single();
                 
                 if (profileError) {
                     console.error('❌ Profile insert error:', profileError);
-                    console.error('Details:', {
-                        message: profileError.message,
-                        details: profileError.details,
-                        hint: profileError.hint,
-                        code: profileError.code
-                    });
-                    
-                    // Don't fail registration - auth user is created
-                    console.warn('⚠️ Auth user created but profile insert failed');
-                    console.warn('User can still login, profile might need manual creation');
                 } else {
                     console.log('✅ Profile created successfully:', profileResult);
                 }
             } catch (profileError) {
                 console.error('❌ Error in profile creation:', profileError);
-                // Continue anyway - auth user is created
             }
         } else {
             console.error('❌ No user object in auth response');
@@ -164,6 +229,7 @@ window.register = async function() {
         showToast('Registration failed. Please try again.', 'error');
         hideLoading();
     }
+    */
 };
 
 window.logout = async function() {
@@ -179,6 +245,12 @@ window.logout = async function() {
         if (error) throw error;
         
         showToast('Logged out successfully', 'success');
+        
+        // Clear AppState
+        if (window.AppState) {
+            window.AppState.currentUser = null;
+            window.AppState.userRole = null;
+        }
         
         // Return to login screen
         showLoginScreen();
@@ -310,4 +382,45 @@ if (typeof showToast === 'undefined') {
     };
 }
 
-console.log('✅ auth.js loaded with COMPLETE registration including profile insert');
+// Initialize auth state listener
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔐 Initializing auth state listener...');
+    
+    if (window.supabase?.auth) {
+        // Listen for auth state changes
+        window.supabase.auth.onAuthStateChange((event, session) => {
+            console.log('🔄 Auth state changed:', event, session?.user?.email);
+            
+            if (event === 'SIGNED_IN' && session) {
+                console.log('✅ User signed in:', session.user.email);
+                showMainApp();
+                
+                // Load user data
+                if (window.loadUserData) {
+                    window.loadUserData();
+                }
+                
+                // Load initial data
+                if (window.loadCourses) {
+                    window.loadCourses();
+                }
+                if (window.loadAssignmentsSection) {
+                    window.loadAssignmentsSection();
+                }
+            } else if (event === 'SIGNED_OUT') {
+                console.log('🚪 User signed out');
+                showLoginScreen();
+            } else if (event === 'INITIAL_SESSION') {
+                if (session) {
+                    console.log('📊 Initial session found:', session.user.email);
+                    showMainApp();
+                } else {
+                    console.log('📊 No initial session');
+                    showLoginScreen();
+                }
+            }
+        });
+    }
+});
+
+console.log('✅ auth.js loaded for consolidated_user_profiles_table');
