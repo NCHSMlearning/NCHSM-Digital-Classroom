@@ -76,8 +76,8 @@ async function loadDashboard() {
         updateDashboardUserInfo();
         
         // Load role-specific dashboard
-        if (AppState.userRole === 'teacher') {
-            await loadTeacherDashboard();
+        if (AppState.userRole === 'lecturer' || AppState.userRole === 'admin' || AppState.userRole === 'superadmin') {
+            await loadLecturerDashboard();
         } else {
             await loadStudentDashboard();
         }
@@ -98,28 +98,28 @@ async function loadDashboard() {
     }
 }
 
-// Load teacher dashboard
-async function loadTeacherDashboard() {
-    console.log('👨‍🏫 Loading teacher dashboard');
+// Load lecturer dashboard
+async function loadLecturerDashboard() {
+    console.log('👨‍🏫 Loading lecturer dashboard');
     
     try {
-        // Load teacher classes
-        await loadTeacherClasses();
+        // Load lecturer classes
+        await loadLecturerClasses();
         
         // Load pending submissions
         await loadPendingSubmissions();
         
-        // Load teacher-specific data
-        await loadTeacherSpecificData();
+        // Load lecturer-specific data
+        await loadLecturerSpecificData();
         
-        // Update quick actions for teacher
-        updateTeacherQuickActions();
+        // Update quick actions for lecturer
+        updateLecturerQuickActions();
         
-        // Update teacher stats
-        updateTeacherStats();
+        // Update lecturer stats
+        updateLecturerStats();
         
     } catch (error) {
-        console.error('Error loading teacher dashboard:', error);
+        console.error('Error loading lecturer dashboard:', error);
     }
 }
 
@@ -166,8 +166,8 @@ async function loadUserData() {
     console.log('👤 Loading user data for:', AppState.userRole);
     
     try {
-        if (AppState.userRole === 'teacher') {
-            await loadTeacherData();
+        if (AppState.userRole === 'lecturer' || AppState.userRole === 'admin' || AppState.userRole === 'superadmin') {
+            await loadLecturerData();
         } else {
             await loadStudentData();
         }
@@ -180,8 +180,8 @@ async function loadUserData() {
 // DATA LOADING FUNCTIONS
 // =====================
 
-// Load teacher classes
-async function loadTeacherClasses() {
+// Load lecturer classes
+async function loadLecturerClasses() {
     try {
         if (!AppState.currentUser) return;
         
@@ -192,19 +192,19 @@ async function loadTeacherClasses() {
                 enrollments(count),
                 assignments(count)
             `)
-            .eq('teacher_id', AppState.currentUser.id)
-            .eq('is_active', true)
+            .eq('created_by', AppState.currentUser.id) // Changed from teacher_id to created_by
+            .eq('status', 'Active')
             .order('created_at', { ascending: false });
             
         if (error) throw error;
         
         AppState.teacherClasses = data || [];
-        displayTeacherClasses();
+        displayLecturerClasses();
         
     } catch (error) {
-        console.error('Error loading teacher classes:', error);
+        console.error('Error loading lecturer classes:', error);
         AppState.teacherClasses = [];
-        displayTeacherClasses();
+        displayLecturerClasses();
     }
 }
 
@@ -216,16 +216,15 @@ async function loadEnrolledClasses() {
         const { data, error } = await window.supabase
             .from('enrollments')
             .select(`
-                course:courses(*),
+                courses(*),
                 enrolled_at
             `)
-            .eq('student_id', AppState.currentUser.id)
-            .eq('status', 'active')
+            .eq('user_id', AppState.currentUser.id) // Changed from student_id to user_id
             .order('enrolled_at', { ascending: false });
             
         if (error) throw error;
         
-        AppState.enrolledClasses = data?.map(item => item.course) || [];
+        AppState.enrolledClasses = data?.map(item => item.courses) || [];
         displayEnrolledClasses();
         
     } catch (error) {
@@ -235,7 +234,7 @@ async function loadEnrolledClasses() {
     }
 }
 
-// Load pending submissions (for teachers)
+// Load pending submissions (for lecturers)
 async function loadPendingSubmissions() {
     try {
         if (!AppState.currentUser) return;
@@ -254,7 +253,7 @@ async function loadPendingSubmissions() {
                 .from('submissions')
                 .select(`
                     *,
-                    student:user_profiles(full_name, email),
+                    student:consolidated_user_profiles_table(full_name, email),
                     assignment:assignments(title)
                 `)
                 .in('assignment_id', assignmentIds)
@@ -302,8 +301,8 @@ async function loadPendingAssignments() {
 // DISPLAY FUNCTIONS
 // =====================
 
-// Display teacher classes
-function displayTeacherClasses() {
+// Display lecturer classes
+function displayLecturerClasses() {
     const container = document.getElementById('upcoming-classes');
     if (!container) return;
     
@@ -312,7 +311,7 @@ function displayTeacherClasses() {
             <div class="empty-state">
                 <i class="fas fa-chalkboard-teacher"></i>
                 <p>No classes created yet</p>
-                <button class="btn btn-sm btn-primary" onclick="createClass()">
+                <button class="btn btn-sm btn-primary teacher-only" onclick="createClassModal()">
                     Create Your First Class
                 </button>
             </div>
@@ -337,7 +336,7 @@ function displayTeacherClasses() {
     container.innerHTML = upcomingClasses.map(cls => `
         <div class="class-item">
             <div class="class-header">
-                <div class="class-name">${cls.name}</div>
+                <div class="class-name">${cls.course_name || cls.name}</div>
                 <div class="class-stats">
                     <span class="stat">
                         <i class="fas fa-users"></i>
@@ -397,12 +396,12 @@ function displayEnrolledClasses() {
     
     container.innerHTML = upcomingClasses.map(cls => `
         <div class="class-item">
-            <div class="class-name">${cls.name}</div>
+            <div class="class-name">${cls.course_name || cls.name}</div>
             <div class="class-time">
                 <i class="far fa-clock"></i>
                 ${formatDateTime(cls.schedule)}
             </div>
-            <div class="class-teacher">${cls.teacher_name || 'Teacher'}</div>
+            <div class="class-teacher">${cls.created_by || 'Lecturer'}</div>
             <button class="btn btn-primary btn-sm" onclick="joinClass('${cls.id}')">
                 <i class="fas fa-video"></i> Join Class
             </button>
@@ -436,13 +435,13 @@ function updatePendingAssignmentsCount() {
 // DASHBOARD STATISTICS
 // =====================
 
-// Update teacher statistics
-function updateTeacherStats() {
+// Update lecturer statistics
+function updateLecturerStats() {
     const stats = {
-        attendance: calculateTeacherAttendance(),
+        attendance: calculateLecturerAttendance(),
         submissions: AppState.pendingSubmissions?.length || 0,
         averageGrade: calculateAverageGrade(),
-        nextClass: getNextTeacherClass()
+        nextClass: getNextLecturerClass()
     };
     
     updateStatsDisplay(stats);
@@ -475,8 +474,8 @@ function updateStatsDisplay(stats) {
 
 // Update dashboard statistics
 function updateDashboardStatistics() {
-    if (AppState.userRole === 'teacher') {
-        updateTeacherStats();
+    if (AppState.userRole === 'lecturer' || AppState.userRole === 'admin' || AppState.userRole === 'superadmin') {
+        updateLecturerStats();
     } else {
         updateStudentStats();
     }
@@ -486,29 +485,32 @@ function updateDashboardStatistics() {
 // QUICK ACTIONS
 // =====================
 
-// Update teacher quick actions
-function updateTeacherQuickActions() {
+// Update lecturer quick actions
+function updateLecturerQuickActions() {
     const quickActions = document.querySelector('.quick-actions');
     if (!quickActions) return;
     
-    quickActions.innerHTML = `
-        <button class="quick-action-btn" onclick="createClass()">
-            <i class="fas fa-plus-circle"></i>
-            <span>New Class</span>
-        </button>
-        <button class="quick-action-btn" onclick="createAssignment()">
-            <i class="fas fa-tasks"></i>
-            <span>New Assignment</span>
-        </button>
-        <button class="quick-action-btn" onclick="gradeSubmissions()">
-            <i class="fas fa-check-circle"></i>
-            <span>Grade Work</span>
-        </button>
-        <button class="quick-action-btn" onclick="sendAnnouncement()">
-            <i class="fas fa-bullhorn"></i>
-            <span>Announcement</span>
-        </button>
-    `;
+    // These will be updated by main.js, this is just fallback
+    if (quickActions.innerHTML.includes('Loading')) {
+        quickActions.innerHTML = `
+            <button class="quick-action-btn" onclick="showSection('classroom')">
+                <i class="fas fa-video"></i>
+                <span>Start Class</span>
+            </button>
+            <button class="quick-action-btn" onclick="createAssignmentModal()">
+                <i class="fas fa-plus"></i>
+                <span>New Assignment</span>
+            </button>
+            <button class="quick-action-btn" onclick="sendAnnouncement()">
+                <i class="fas fa-bullhorn"></i>
+                <span>Send Announcement</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('grades')">
+                <i class="fas fa-chart-bar"></i>
+                <span>View Grades</span>
+            </button>
+        `;
+    }
 }
 
 // Update student quick actions
@@ -516,24 +518,27 @@ function updateStudentQuickActions() {
     const quickActions = document.querySelector('.quick-actions');
     if (!quickActions) return;
     
-    quickActions.innerHTML = `
-        <button class="quick-action-btn" onclick="joinNextClass()">
-            <i class="fas fa-video"></i>
-            <span>Join Class</span>
-        </button>
-        <button class="quick-action-btn" onclick="showSection('assignments')">
-            <i class="fas fa-tasks"></i>
-            <span>Assignments</span>
-        </button>
-        <button class="quick-action-btn" onclick="submitWork()">
-            <i class="fas fa-paper-plane"></i>
-            <span>Submit Work</span>
-        </button>
-        <button class="quick-action-btn" onclick="showSection('grades')">
-            <i class="fas fa-chart-line"></i>
-            <span>View Grades</span>
-        </button>
-    `;
+    // These will be updated by main.js, this is just fallback
+    if (quickActions.innerHTML.includes('Loading')) {
+        quickActions.innerHTML = `
+            <button class="quick-action-btn" onclick="showSection('classroom')">
+                <i class="fas fa-video"></i>
+                <span>Join Class</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('assignments')">
+                <i class="fas fa-tasks"></i>
+                <span>View Assignments</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('grades')">
+                <i class="fas fa-chart-bar"></i>
+                <span>My Grades</span>
+            </button>
+            <button class="quick-action-btn" onclick="showSection('resources')">
+                <i class="fas fa-folder-open"></i>
+                <span>Study Materials</span>
+            </button>
+        `;
+    }
 }
 
 // Handle quick action clicks
@@ -542,28 +547,38 @@ function handleQuickAction(action) {
     
     switch(action.toLowerCase()) {
         case 'join class':
-            joinNextClass();
+            showSection('classroom');
+            break;
+        case 'start class':
+            showSection('classroom');
             break;
         case 'new class':
-            createClass();
+            createClassModal();
             break;
         case 'new assignment':
-            createAssignment();
+            createAssignmentModal();
             break;
         case 'grade work':
-            gradeSubmissions();
+            showSection('grades');
             break;
+        case 'send announcement':
         case 'announcement':
             sendAnnouncement();
             break;
         case 'submit work':
-            submitWork();
+            showSection('assignments');
             break;
         case 'view grades':
+        case 'my grades':
             showSection('grades');
             break;
+        case 'view assignments':
         case 'assignments':
             showSection('assignments');
+            break;
+        case 'study materials':
+        case 'resources':
+            showSection('resources');
             break;
     }
 }
@@ -600,7 +615,7 @@ function hideDashboardLoading() {
 function updateDashboardUserInfo() {
     const welcomeMsg = document.querySelector('.welcome-message');
     if (welcomeMsg && AppState.currentUser) {
-        const userName = AppState.currentUser.user_metadata?.full_name || 
+        const userName = AppState.currentUser.full_name || 
                         AppState.currentUser.email?.split('@')[0] || 
                         'User';
         welcomeMsg.textContent = `Welcome back, ${userName}!`;
@@ -611,7 +626,7 @@ function updateDashboardUserInfo() {
 // CALCULATION FUNCTIONS (Placeholders)
 // =====================
 
-function calculateTeacherAttendance() {
+function calculateLecturerAttendance() {
     return '95%';
 }
 
@@ -627,7 +642,7 @@ function calculateStudentAverageGrade() {
     return 'A-';
 }
 
-function getNextTeacherClass() {
+function getNextLecturerClass() {
     if (AppState.teacherClasses && AppState.teacherClasses.length > 0) {
         const nextClass = AppState.teacherClasses
             .filter(c => c.schedule && new Date(c.schedule) > new Date())
@@ -680,8 +695,8 @@ function formatDateTime(dateString) {
 // PLACEHOLDER FUNCTIONS
 // =====================
 
-async function loadTeacherSpecificData() {
-    console.log('📚 Loading teacher specific data');
+async function loadLecturerSpecificData() {
+    console.log('📚 Loading lecturer specific data');
     // Implementation
 }
 
@@ -690,8 +705,8 @@ async function loadStudentSpecificData() {
     // Implementation
 }
 
-async function loadTeacherData() {
-    console.log('📊 Loading teacher data');
+async function loadLecturerData() {
+    console.log('📊 Loading lecturer data');
     // Implementation
 }
 
@@ -721,9 +736,9 @@ async function loadCalendarEvents() {
 
 // Export dashboard functions
 window.loadDashboard = loadDashboard;
-window.loadTeacherClasses = loadTeacherClasses;
+window.loadTeacherClasses = loadLecturerClasses; // Alias for compatibility
 window.loadEnrolledClasses = loadEnrolledClasses;
-window.displayTeacherClasses = displayTeacherClasses;
+window.displayTeacherClasses = displayLecturerClasses; // Alias for compatibility
 window.displayEnrolledClasses = displayEnrolledClasses;
 
 console.log('✅ dashboard.js loaded - Dashboard module ready');
