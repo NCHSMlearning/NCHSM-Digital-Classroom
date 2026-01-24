@@ -209,7 +209,7 @@ window.createClassModal = function() {
 
 // Update the saveClass function in classroom.js
 window.saveClass = async function() {
-    console.log('💾 Starting saveClass function');
+    console.log('💾 Starting saveClass function for CLASSES table');
     
     const className = document.getElementById('class-name')?.value.trim();
     const description = document.getElementById('class-description')?.value.trim();
@@ -240,50 +240,35 @@ window.saveClass = async function() {
     }
     
     try {
-        console.log('📊 Creating class in database...');
+        console.log('📊 Creating class in CLASSES table...');
         
-        // Get user ID - IMPORTANT: Use auth user ID
-        const authUserId = window.AppState?.currentUser?.id; // Renamed to authUserId for clarity
+        // Get user ID
+        const authUserId = window.AppState?.currentUser?.id;
         const userEmail = window.AppState?.currentUser?.email;
         
         console.log('Auth User ID:', authUserId);
-        console.log('User Email:', userEmail);
         
         if (!authUserId) {
             showToast('Unable to identify user. Please login again.', 'error');
             return;
         }
         
-        // Get the FULL profile including the ID
+        // Get profile from consolidated table
         const { data: profile, error: profileError } = await window.supabase
             .from('consolidated_user_profiles_table')
-            .select('id, role, full_name, user_id') // ← Added 'id' to SELECT
+            .select('id, role, full_name, user_id')
             .eq('user_id', authUserId)
-            .single(); // Use single() since we expect exactly one match
+            .single();
         
-        if (profileError) {
-            console.error('❌ Profile check error:', profileError);
-            
-            // Handle the specific "no rows" error
-            if (profileError.code === 'PGRST116' || profileError.message.includes('0 rows')) {
-                showToast('User profile not found in system. Contact administrator.', 'error');
-            } else {
-                showToast('Error checking user profile: ' + profileError.message, 'error');
-            }
-            return;
-        }
-        
-        if (!profile) {
-            console.error('❌ User profile not found for user_id:', authUserId);
+        if (profileError || !profile) {
+            console.error('❌ Profile error:', profileError);
             showToast('User profile not found. Contact administrator.', 'error');
             return;
         }
         
-        console.log('✅ Found profile:', profile);
-        console.log('📊 Profile ID (will use for created_by):', profile.id);
-        console.log('📊 Auth User ID:', profile.user_id);
+        console.log('✅ Profile found:', profile);
         
-        // Only lecturers can create classes
+        // Check if user can create classes
         const isTeachingRole = profile.role === 'lecturer' || 
                               profile.role === 'admin' || 
                               profile.role === 'superadmin';
@@ -293,47 +278,45 @@ window.saveClass = async function() {
             return;
         }
         
-        console.log('✅ User authorized to create class. Role:', profile.role, 'Name:', profile.full_name);
-        
-        // Now create the class - USE profile.id for created_by
+        // Prepare data for CLASSES table
         const classData = {
-            course_name: className,
+            title: className,  // Using 'title' column
             description: description || null,
-            created_by: profile.id, // ← CRITICAL FIX: Use profile.id not authUserId
+            instructor_id: profile.id,  // Foreign key to consolidated_user_profiles_table
             schedule: schedule,
             duration_minutes: parseInt(duration) || 60,
-            status: 'Active',
-            color: '#4f46e5',
-            created_at: new Date().toISOString()
+            status: 'scheduled',
+            active: true,  // Existing column from original classes table
+            meeting_url: null,  // Can be filled later
+            created_at: new Date().toISOString(),
+            // latitude and longitude can remain null
         };
         
-        console.log('📤 Inserting class data:', classData);
+        console.log('📤 Inserting into CLASSES table:', classData);
         
+        // Insert into CLASSES table
         const { data, error } = await window.supabase
-            .from('courses')
+            .from('classes')  // ← CHANGED FROM 'courses' TO 'classes'
             .insert([classData])
             .select()
             .single();
         
         if (error) {
-            console.error('❌ Database error:', error);
+            console.error('❌ Database error inserting into classes:', error);
             
-            // Handle specific errors
             if (error.code === '23503') {
                 console.error('Foreign key violation details:', error);
                 showToast('Database constraint error. Please check user profile exists.', 'error');
             } else if (error.code === '23505') {
                 showToast('A class with similar details already exists', 'error');
-            } else if (error.code === '42501') {
-                showToast('Permission denied. Check database permissions.', 'error');
             } else {
                 showToast('Error creating class: ' + error.message, 'error');
             }
             throw error;
         }
         
-        console.log('✅ Class created:', data);
-        showToast('Class created successfully!', 'success');
+        console.log('✅ Class created in CLASSES table:', data);
+        showToast('Class scheduled successfully!', 'success');
         
         // Close modal
         closeModal('create-class-modal');
@@ -355,7 +338,6 @@ window.saveClass = async function() {
         
     } catch (error) {
         console.error('❌ Error creating class:', error);
-        // Don't show toast again if already shown
         if (!error.message.includes('already shown')) {
             showToast('Failed to create class. Please try again.', 'error');
         }
@@ -374,7 +356,7 @@ function generateMeetingUrl() {
 
 // Load available classes
 async function loadAvailableClasses() {
-    console.log('📚 Loading available classes...');
+    console.log('📚 Loading available classes from CLASSES table...');
     
     try {
         let query;
@@ -384,23 +366,31 @@ async function loadAvailableClasses() {
                               AppState.userRole === 'superadmin';
         
         if (isTeachingRole) {
-            console.log('👨‍🏫 Loading lecturer classes for:', AppState.currentUser?.id);
-            // Lecturers see their own classes
+            console.log('👨‍🏫 Loading lecturer classes from classes table');
+            
+            // Get the instructor_id from profile
+            const authUserId = AppState.currentUser?.id;
+            const { data: profile } = await supabase
+                .from('consolidated_user_profiles_table')
+                .select('id')
+                .eq('user_id', authUserId)
+                .single();
+            
             query = window.supabase
-                .from('courses')
+                .from('classes')  // ← CHANGED FROM 'courses'
                 .select('*')
-                .eq('created_by', AppState.currentUser?.id)
-                .eq('status', 'Active')
+                .eq('instructor_id', profile?.id)  // ← CHANGED FROM 'created_by'
+                .eq('status', 'scheduled')  // Changed from 'Active'
                 .order('schedule', { ascending: true });
         } else {
-            console.log('👨‍🎓 Loading student classes');
+            console.log('👨‍🎓 Loading student classes from classes table');
             // Students see upcoming classes
             const now = new Date().toISOString();
             query = window.supabase
-                .from('courses')
+                .from('classes')  // ← CHANGED FROM 'courses'
                 .select('*')
                 .gte('schedule', now)
-                .eq('status', 'Active')
+                .eq('status', 'scheduled')  // Changed from 'Active'
                 .order('schedule', { ascending: true });
         }
         
@@ -411,7 +401,7 @@ async function loadAvailableClasses() {
             throw error;
         }
         
-        console.log('✅ Classes loaded:', data?.length || 0);
+        console.log('✅ Classes loaded from CLASSES table:', data?.length || 0);
         displayAvailableClasses(data || []);
         
     } catch (error) {
@@ -458,7 +448,7 @@ function displayAvailableClasses(classes) {
                 return `
                 <div class="class-card" data-id="${cls.id}">
                     <div class="class-header">
-                        <h4>${cls.course_name || cls.name}</h4>
+                        <h4>${cls.title}</h4>  <!-- Changed from course_name to title -->
                         <span class="class-status ${isUpcoming ? 'upcoming' : 'completed'}">
                             ${isUpcoming ? 'Upcoming' : 'Completed'}
                         </span>
@@ -528,7 +518,7 @@ window.joinClass = async function(classId = null) {
         if (classId) {
             // Join specific class
             const { data, error } = await window.supabase
-                .from('courses')
+                .from('classes')  // ← CHANGED FROM 'courses'
                 .select('*')
                 .eq('id', classId)
                 .single();
@@ -539,10 +529,10 @@ window.joinClass = async function(classId = null) {
             // Join next available class
             const now = new Date().toISOString();
             const { data, error } = await window.supabase
-                .from('courses')
+                .from('classes')  // ← CHANGED FROM 'courses'
                 .select('*')
                 .gte('schedule', now)
-                .eq('status', 'Active')
+                .eq('status', 'scheduled')  // Changed from 'Active'
                 .order('schedule', { ascending: true })
                 .limit(1)
                 .single();
@@ -555,9 +545,9 @@ window.joinClass = async function(classId = null) {
             classData = data;
         }
         
-        // Check if class is active
-        if (classData.status !== 'Active') {
-            showToast('This class is no longer active', 'error');
+        // Check if class is scheduled or active
+        if (classData.status !== 'scheduled' && classData.status !== 'active') {
+            showToast('This class is no longer available', 'error');
             return;
         }
         
@@ -565,7 +555,7 @@ window.joinClass = async function(classId = null) {
         ClassroomState.currentClass = classData;
         ClassroomState.isInClass = true;
         
-        console.log('✅ Joined class:', classData.course_name || classData.name);
+        console.log('✅ Joined class:', classData.title);
         
         // Update UI
         updateClassroomUI();
@@ -577,7 +567,7 @@ window.joinClass = async function(classId = null) {
         // Connect to class
         connectToClass();
         
-        showToast(`Joined class: ${classData.course_name || classData.name}`, 'success');
+        showToast(`Joined class: ${classData.title}`, 'success');
         
     } catch (error) {
         console.error('❌ Error joining class:', error);
@@ -602,7 +592,7 @@ function showActiveClass() {
     classroomContainer.innerHTML = `
         <div class="active-class">
             <div class="class-header">
-                <h3><i class="fas fa-chalkboard-teacher"></i> ${ClassroomState.currentClass.course_name || ClassroomState.currentClass.name}</h3>
+                <h3><i class="fas fa-chalkboard-teacher"></i> ${ClassroomState.currentClass.title}</h3>
                 <div class="class-info">
                     <span class="class-time">
                         <i class="far fa-clock"></i>
@@ -673,7 +663,7 @@ function showActiveClass() {
                         <div class="chat-messages" id="chat-messages">
                             <div class="welcome-message system-message">
                                 <i class="fas fa-bullhorn"></i>
-                                Welcome to ${ClassroomState.currentClass.course_name || ClassroomState.currentClass.name}! Class started at ${new Date().toLocaleTimeString()}.
+                                Welcome to ${ClassroomState.currentClass.title}! Class started at ${new Date().toLocaleTimeString()}.
                             </div>
                         </div>
                         <div class="chat-input">
